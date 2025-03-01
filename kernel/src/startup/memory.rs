@@ -13,6 +13,7 @@ use core::{
     cell::SyncUnsafeCell,
     cmp::{max, min},
     slice::Iter,
+    sync::atomic::AtomicUsize,
 };
 use limine::{
     memory_map::EntryType,
@@ -463,9 +464,16 @@ unsafe fn map_memory<A: Arch>(areas: &[MemoryArea], mut bump_allocator: &mut Bum
     //     }
     // }
 
+    NEW_PAGE_TABLE.store(
+        mapper.table().phys().data(),
+        core::sync::atomic::Ordering::SeqCst,
+    );
+
     // Use the new table
     mapper.make_current();
 }
+
+pub static NEW_PAGE_TABLE: AtomicUsize = AtomicUsize::new(0);
 
 pub unsafe fn init(low_limit: Option<usize>, high_limit: Option<usize>) {
     let physmem_limit = MemoryEntry {

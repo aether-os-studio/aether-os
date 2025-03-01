@@ -1,11 +1,13 @@
-use core::ptr::NonNull;
+use core::{ptr::NonNull, sync::atomic::AtomicBool};
 
-use acpi::{madt::Madt, AcpiHandler, AcpiTables, PhysicalMapping};
+use acpi::{madt::Madt, AcpiHandler, AcpiTables, HpetInfo, PhysicalMapping};
 use alloc::boxed::Box;
 use limine::request::RsdpRequest;
 use rmm::{Arch, PhysicalAddress};
 
 use crate::{arch::memory::CurrentRmmArch as RmmA, memory::mapper::KernelMapper};
+
+pub static APIC_INIT: AtomicBool = AtomicBool::new(false);
 
 #[used]
 #[unsafe(link_section = ".requests")]
@@ -29,6 +31,11 @@ pub fn init() {
         let madt = acpi_table.find_table::<Madt>().unwrap();
         crate::arch::apic::io::init(page_table, &madt);
     }
+
+    if let Ok(hpet_info) = HpetInfo::new(acpi_table) {
+        unsafe { crate::arch::hpet::init(page_table, hpet_info) };
+    }
+    APIC_INIT.store(true, core::sync::atomic::Ordering::SeqCst);
 }
 
 #[derive(Clone)]

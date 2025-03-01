@@ -1,14 +1,19 @@
 use ::rmm::Arch;
 use limine::request::HhdmRequest;
 use memory::CurrentRmmArch as RmmA;
+use smp::{BSP_LAPIC_ID, CPUS};
 
 use crate::BASE_REVISION;
 
 pub mod apic;
+pub mod gdt;
+pub mod hpet;
+pub mod idt;
 pub mod ipi;
 pub mod memory;
 pub mod rmm;
 pub mod serial;
+pub mod smp;
 
 pub const STACK_SIZE: usize = 0x100000;
 
@@ -36,9 +41,14 @@ unsafe extern "C" fn kmain() -> ! {
     crate::startup::memory::init(Some(0x100000), None);
     crate::allocator::init();
 
+    CPUS.write().load(*BSP_LAPIC_ID);
+    CPUS.write().init_ap();
+
     crate::acpi::init();
+    idt::init();
 
     log::info!("Aether OS initialized");
 
+    x86_64::instructions::interrupts::enable();
     crate::hcf();
 }

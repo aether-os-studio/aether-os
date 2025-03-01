@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 #![allow(dead_code)]
+#![feature(abi_x86_interrupt)]
 #![feature(allocator_api)]
 #![feature(int_roundings)]
 #![feature(let_chains)]

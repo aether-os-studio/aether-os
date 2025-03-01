@@ -63,7 +63,7 @@ impl KernelMapper {
 
     pub fn lock() -> Self {
         // Self::lock_manually(crate::cpu_id())
-        Self::lock_manually(LogicalCpuId::new(0))
+        Self::lock_manually(LogicalCpuId::BSP)
     }
 
     pub fn get_mut(&mut self) -> Option<&mut crate::arch::memory::paging::PageMapper> {

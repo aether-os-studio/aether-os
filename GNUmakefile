@@ -9,7 +9,7 @@ override USER_VARIABLE = $(if $(filter $(origin $(1)),default undefined),$(eval 
 $(call USER_VARIABLE,KARCH,x86_64)
 
 # Default user QEMU flags. These are appended to the QEMU command calls.
-$(call USER_VARIABLE,QEMUFLAGS,-M q35 -m 2G -serial stdio -cpu max -s -S)
+$(call USER_VARIABLE,QEMUFLAGS,-M q35 -m 2G -serial stdio -smp 4 -cpu max)
 
 override IMAGE_NAME := aether-os-$(KARCH)
 

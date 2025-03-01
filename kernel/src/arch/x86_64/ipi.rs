@@ -22,6 +22,7 @@ pub fn ipi(kind: IpiKind, target: IpiTarget) {
     let icr = (target as u64) << 18 | 1 << 14 | (kind as u64);
     unsafe { the_local_apic().set_icr(icr) };
 }
+
 use crate::cpu_set::LogicalCpuId;
 
 #[inline(always)]
@@ -32,4 +33,10 @@ pub fn ipi_single(kind: IpiKind, target: LogicalCpuId) {
         // TODO: Distinguish between logical and physical CPU IDs
         the_local_apic().ipi(target.get(), kind);
     }
+}
+
+use x86_64::structures::idt::InterruptStackFrame;
+
+pub extern "x86-interrupt" fn pit(_frame: InterruptStackFrame) {
+    log::debug!("pit ipi");
 }
