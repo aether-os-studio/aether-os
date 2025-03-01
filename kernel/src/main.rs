@@ -1,16 +1,20 @@
 #![no_std]
 #![no_main]
 #![allow(dead_code)]
+#![feature(allocator_api)]
 #![feature(int_roundings)]
 #![feature(let_chains)]
 #![feature(sync_unsafe_cell)]
 
+mod acpi;
 mod allocator;
 mod arch;
 mod cpu_set;
 mod klog;
 mod memory;
 mod startup;
+
+extern crate alloc;
 
 #[macro_use]
 extern crate bitflags;
@@ -23,7 +27,7 @@ use limine::BaseRevision;
 /// Be sure to mark all limine requests with #[used], otherwise they may be removed by the compiler.
 #[used]
 // The .requests section allows limine to find the requests faster and more safely.
-#[link_section = ".requests"]
+#[unsafe(link_section = ".requests")]
 static BASE_REVISION: BaseRevision = BaseRevision::new();
 
 /// Define the stand and end markers for Limine requests.
@@ -63,7 +67,7 @@ macro_rules! linker_offsets(
     }
 );
 
-pub const KERNEL_HEAP_OFFSET: usize = 0xFFFFA00000000000;
+pub const KERNEL_HEAP_OFFSET: usize = 0xFFFFFFFF_A0000000;
 pub const KERNEL_HEAP_SIZE: usize = 8 * 1024 * 1024;
 
 mod kernel_executable_offsets {

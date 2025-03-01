@@ -72,6 +72,7 @@ SECTIONS
     .bss : {
         __bss_start = .;
         *(.bss*)
+        __bss_end = .;
         *(COMMON)
     } :data
     __end = .;

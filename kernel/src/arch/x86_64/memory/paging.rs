@@ -1,7 +1,5 @@
 use core::fmt::Debug;
 
-use x86::msr;
-
 pub use super::CurrentRmmArch as RmmA;
 pub use rmm::{Arch as RmmArch, VirtualAddress};
 
@@ -23,45 +21,6 @@ pub const ENTRY_COUNT: usize = RmmA::PAGE_ENTRIES;
 /// Size of pages
 pub const PAGE_SIZE: usize = RmmA::PAGE_SIZE;
 pub const PAGE_MASK: usize = RmmA::PAGE_OFFSET_MASK;
-
-/// Setup page attribute table
-#[cold]
-unsafe fn init_pat() {
-    let uncacheable = 0;
-    let write_combining = 1;
-    let write_through = 4;
-    //let write_protected = 5;
-    let write_back = 6;
-    let uncached = 7;
-
-    let pat0 = write_back;
-    let pat1 = write_through;
-    let pat2 = uncached;
-    let pat3 = uncacheable;
-
-    let pat4 = write_combining;
-    let pat5 = pat1;
-    let pat6 = pat2;
-    let pat7 = pat3;
-
-    msr::wrmsr(
-        msr::IA32_PAT,
-        pat7 << 56
-            | pat6 << 48
-            | pat5 << 40
-            | pat4 << 32
-            | pat3 << 24
-            | pat2 << 16
-            | pat1 << 8
-            | pat0,
-    );
-}
-
-/// Initialize PAT
-#[cold]
-pub unsafe fn init() {
-    init_pat();
-}
 
 /// Page
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

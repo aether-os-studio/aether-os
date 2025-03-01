@@ -1,0 +1,417 @@
+use core::{cell::SyncUnsafeCell, fmt, ptr};
+
+use acpi::{
+    madt::{InterruptSourceOverrideEntry, IoApicEntry, Madt, MadtEntry},
+    PhysicalMapping,
+};
+use alloc::vec::Vec;
+use raw_cpuid::CpuId;
+use rmm::{Arch, PageFlags, PhysicalAddress};
+use spin::Mutex;
+
+use crate::{
+    acpi::AcpiMemHandler,
+    arch::memory::paging::{entry::EntryFlags, Page},
+    memory::{mapper::KernelMapper, Frame, RmmA},
+    serial_println,
+};
+
+pub struct IoApicRegs {
+    pointer: *const u32,
+}
+
+impl IoApicRegs {
+    fn ioregsel(&self) -> *const u32 {
+        self.pointer
+    }
+    fn iowin(&self) -> *const u32 {
+        // offset 0x10
+        unsafe { self.pointer.offset(4) }
+    }
+    fn write_ioregsel(&mut self, value: u32) {
+        unsafe { ptr::write_volatile::<u32>(self.ioregsel() as *mut u32, value) }
+    }
+    fn read_iowin(&self) -> u32 {
+        unsafe { ptr::read_volatile::<u32>(self.iowin()) }
+    }
+    fn write_iowin(&mut self, value: u32) {
+        unsafe { ptr::write_volatile::<u32>(self.iowin() as *mut u32, value) }
+    }
+    fn read_reg(&mut self, reg: u8) -> u32 {
+        self.write_ioregsel(reg.into());
+        self.read_iowin()
+    }
+    fn write_reg(&mut self, reg: u8, value: u32) {
+        self.write_ioregsel(reg.into());
+        self.write_iowin(value);
+    }
+    pub fn read_ioapicid(&mut self) -> u32 {
+        self.read_reg(0x00)
+    }
+    pub fn read_ioapicver(&mut self) -> u32 {
+        self.read_reg(0x01)
+    }
+    pub fn read_ioredtbl(&mut self, idx: u8) -> u64 {
+        assert!(idx < 24);
+        let lo = self.read_reg(0x10 + idx * 2);
+        let hi = self.read_reg(0x10 + idx * 2 + 1);
+
+        u64::from(lo) | (u64::from(hi) << 32)
+    }
+    pub fn write_ioredtbl(&mut self, idx: u8, value: u64) {
+        assert!(idx < 24);
+
+        let lo = value as u32;
+        let hi = (value >> 32) as u32;
+
+        self.write_reg(0x10 + idx * 2, lo);
+        self.write_reg(0x10 + idx * 2 + 1, hi);
+    }
+
+    pub fn max_redirection_table_entries(&mut self) -> u8 {
+        let ver = self.read_ioapicver();
+        ((ver & 0x00FF_0000) >> 16) as u8
+    }
+    #[allow(dead_code)]
+    pub fn id(&mut self) -> u8 {
+        let id_reg = self.read_ioapicid();
+        ((id_reg & 0x0F00_0000) >> 24) as u8
+    }
+}
+
+pub struct IoApic {
+    regs: Mutex<IoApicRegs>,
+    gsi_start: u32,
+    count: u8,
+}
+
+unsafe impl Send for IoApic {}
+unsafe impl Sync for IoApic {}
+impl IoApic {
+    #[allow(dead_code)]
+    pub fn new(regs_base: *const u32, gsi_start: u32) -> Self {
+        let mut regs = IoApicRegs { pointer: regs_base };
+        let count = regs.max_redirection_table_entries();
+
+        Self {
+            regs: Mutex::new(regs),
+            gsi_start,
+            count,
+        }
+    }
+    /// Map an interrupt vector to a physical local APIC ID of a processor (thus physical mode).
+    #[allow(dead_code)]
+    pub fn map(&self, idx: u8, info: MapInfo) {
+        self.regs.lock().write_ioredtbl(idx, info.as_raw())
+    }
+    pub fn set_mask(&self, gsi: u32, mask: bool) {
+        let idx = (gsi - self.gsi_start) as u8;
+        let mut guard = self.regs.lock();
+
+        let mut reg = guard.read_ioredtbl(idx);
+        reg &= !(1 << 16);
+        reg |= u64::from(mask) << 16;
+        guard.write_ioredtbl(idx, reg);
+    }
+}
+#[repr(u8)]
+#[derive(Clone, Copy, Debug)]
+pub enum ApicTriggerMode {
+    Edge = 0,
+    Level = 1,
+}
+#[repr(u8)]
+#[derive(Clone, Copy, Debug)]
+pub enum ApicPolarity {
+    ActiveHigh = 0,
+    ActiveLow = 1,
+}
+#[repr(u8)]
+#[derive(Clone, Copy, Debug)]
+#[allow(unused)]
+pub enum DestinationMode {
+    Physical = 0,
+    Logical = 1,
+}
+#[repr(u8)]
+#[derive(Clone, Copy, Debug)]
+#[allow(unused)]
+pub enum DeliveryMode {
+    Fixed = 0b000,
+    LowestPriority = 0b001,
+    Smi = 0b010,
+    Nmi = 0b100,
+    Init = 0b101,
+    ExtInt = 0b111,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct MapInfo {
+    pub dest: u8,
+    pub mask: bool,
+    pub trigger_mode: ApicTriggerMode,
+    pub polarity: ApicPolarity,
+    pub dest_mode: DestinationMode,
+    pub delivery_mode: DeliveryMode,
+    pub vector: u8,
+}
+
+impl MapInfo {
+    pub fn as_raw(&self) -> u64 {
+        assert!(self.vector >= 0x20);
+        assert!(self.vector <= 0xFE);
+
+        // TODO: Check for reserved fields.
+
+        (u64::from(self.dest) << 56)
+            | (u64::from(self.mask) << 16)
+            | ((self.trigger_mode as u64) << 15)
+            | ((self.polarity as u64) << 13)
+            | ((self.dest_mode as u64) << 11)
+            | ((self.delivery_mode as u64) << 8)
+            | u64::from(self.vector)
+    }
+}
+
+impl fmt::Debug for IoApic {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        struct RedirTable<'a>(&'a Mutex<IoApicRegs>);
+
+        impl<'a> fmt::Debug for RedirTable<'a> {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                let mut guard = self.0.lock();
+
+                let count = guard.max_redirection_table_entries();
+                f.debug_list()
+                    .entries((0..count).map(|i| guard.read_ioredtbl(i)))
+                    .finish()
+            }
+        }
+
+        f.debug_struct("IoApic")
+            .field("redir_table", &RedirTable(&self.regs))
+            .field("gsi_start", &self.gsi_start)
+            .field("count", &self.count)
+            .finish()
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum TriggerMode {
+    ConformsToSpecs,
+    Edge,
+    Level,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum Polarity {
+    ConformsToSpecs,
+    ActiveHigh,
+    ActiveLow,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Override {
+    bus_irq: u8,
+    gsi: u32,
+
+    trigger_mode: TriggerMode,
+    polarity: Polarity,
+}
+
+// static mut because only the AP initializes the I/O Apic, and when that is done, it's solely
+// accessed immutably.
+static IOAPICS: SyncUnsafeCell<Option<Vec<IoApic>>> = SyncUnsafeCell::new(None);
+
+// static mut for the same reason as above
+static SRC_OVERRIDES: SyncUnsafeCell<Option<Vec<Override>>> = SyncUnsafeCell::new(None);
+
+pub fn ioapics() -> &'static [IoApic] {
+    unsafe { &*IOAPICS.get() }
+        .as_ref()
+        .map_or(&[], |vector| &vector[..])
+}
+pub fn src_overrides() -> &'static [Override] {
+    unsafe { &*SRC_OVERRIDES.get() }
+        .as_ref()
+        .map_or(&[], |vector| &vector[..])
+}
+
+pub unsafe fn handle_ioapic(mapper: &mut KernelMapper, madt_ioapic: &IoApicEntry) {
+    // map the I/O APIC registers
+
+    let frame = Frame::containing(PhysicalAddress::new(madt_ioapic.io_apic_address as usize));
+    #[cfg(target_arch = "x86_64")]
+    let page = Page::containing_address(RmmA::phys_to_virt(frame.base()));
+
+    assert!(mapper.translate(page.start_address()).is_none());
+
+    mapper
+        .get_mut()
+        .expect("expected KernelMapper not to be locked re-entrant while mapping I/O APIC memory")
+        .map_phys(
+            page.start_address(),
+            frame.base(),
+            PageFlags::new()
+                .write(true)
+                .custom_flag(EntryFlags::NO_CACHE.bits(), true),
+        )
+        .expect("failed to map I/O APIC")
+        .flush();
+
+    let ioapic_registers = page.start_address().data() as *const u32;
+    let ioapic = IoApic::new(ioapic_registers, madt_ioapic.global_system_interrupt_base);
+
+    assert_eq!(
+        ioapic.regs.lock().id(),
+        madt_ioapic.io_apic_id,
+        "mismatched ACPI MADT I/O APIC ID, and the ID reported by the I/O APIC"
+    );
+
+    (*IOAPICS.get()).get_or_insert_with(Vec::new).push(ioapic);
+}
+
+pub unsafe fn handle_src_override(src_override: &InterruptSourceOverrideEntry) {
+    let flags = src_override.flags;
+
+    let polarity_raw = (flags & 0x0003) as u8;
+    let trigger_mode_raw = ((flags & 0x000C) >> 2) as u8;
+
+    let polarity = match polarity_raw {
+        0b00 => Polarity::ConformsToSpecs,
+        0b01 => Polarity::ActiveHigh,
+        0b10 => return, // reserved
+        0b11 => Polarity::ActiveLow,
+
+        _ => unreachable!(),
+    };
+
+    let trigger_mode = match trigger_mode_raw {
+        0b00 => TriggerMode::ConformsToSpecs,
+        0b01 => TriggerMode::Edge,
+        0b10 => return, // reserved
+        0b11 => TriggerMode::Level,
+        _ => unreachable!(),
+    };
+
+    let over = Override {
+        bus_irq: src_override.irq,
+        gsi: src_override.global_system_interrupt,
+        polarity,
+        trigger_mode,
+    };
+    (*SRC_OVERRIDES.get())
+        .get_or_insert_with(Vec::new)
+        .push(over);
+}
+
+#[allow(dead_code)]
+pub unsafe fn init(active_table: &mut KernelMapper, madt: &PhysicalMapping<AcpiMemHandler, Madt>) {
+    let cpu_id = CpuId::new();
+
+    let bsp_apic_id = cpu_id.get_feature_info().unwrap().initial_local_apic_id(); // TODO: remove unwraps
+
+    // find all I/O APICs (usually one).
+
+    for entry in madt.entries() {
+        match entry {
+            MadtEntry::IoApic(ioapic) => handle_ioapic(active_table, ioapic),
+            MadtEntry::InterruptSourceOverride(src_override) => handle_src_override(src_override),
+            _ => (),
+        }
+    }
+    // serial_println!(
+    //     "I/O APICs: {:?}, overrides: {:?}",
+    //     ioapics(),
+    //     src_overrides()
+    // );
+
+    // map the legacy PC-compatible IRQs (0-15) to 32-47, just like we did with 8259 PIC (if it
+    // wouldn't have been disabled due to this I/O APIC)
+    for legacy_irq in 0..=15 {
+        let (gsi, trigger_mode, polarity) = match get_override(legacy_irq) {
+            Some(over) => (over.gsi, over.trigger_mode, over.polarity),
+            None => {
+                if src_overrides()
+                    .iter()
+                    .any(|over| over.gsi == u32::from(legacy_irq) && over.bus_irq != legacy_irq)
+                    && !src_overrides()
+                        .iter()
+                        .any(|over| over.bus_irq == legacy_irq)
+                {
+                    // there's an IRQ conflict, making this legacy IRQ inaccessible.
+                    continue;
+                }
+                (
+                    legacy_irq.into(),
+                    TriggerMode::ConformsToSpecs,
+                    Polarity::ConformsToSpecs,
+                )
+            }
+        };
+        let apic = match find_ioapic(gsi) {
+            Some(ioapic) => ioapic,
+            None => {
+                serial_println!("Unable to find a suitable APIC for legacy IRQ {} (GSI {}). It will not be mapped.", legacy_irq, gsi);
+                continue;
+            }
+        };
+        let redir_tbl_index = (gsi - apic.gsi_start) as u8;
+
+        let map_info = MapInfo {
+            // only send to the BSP
+            dest: bsp_apic_id,
+            dest_mode: DestinationMode::Physical,
+            delivery_mode: DeliveryMode::Fixed,
+            mask: false,
+            polarity: match polarity {
+                Polarity::ActiveHigh => ApicPolarity::ActiveHigh,
+                Polarity::ActiveLow => ApicPolarity::ActiveLow,
+                Polarity::ConformsToSpecs => ApicPolarity::ActiveHigh,
+            },
+            trigger_mode: match trigger_mode {
+                TriggerMode::Edge => ApicTriggerMode::Edge,
+                TriggerMode::Level => ApicTriggerMode::Level,
+                TriggerMode::ConformsToSpecs => ApicTriggerMode::Edge,
+            },
+            vector: 32 + legacy_irq,
+        };
+        apic.map(redir_tbl_index, map_info);
+    }
+    // serial_println!(
+    //     "I/O APICs: {:?}, overrides: {:?}",
+    //     ioapics(),
+    //     src_overrides()
+    // );
+}
+
+fn get_override(irq: u8) -> Option<&'static Override> {
+    src_overrides().iter().find(|over| over.bus_irq == irq)
+}
+
+fn resolve(irq: u8) -> u32 {
+    get_override(irq).map_or(u32::from(irq), |over| over.gsi)
+}
+
+fn find_ioapic(gsi: u32) -> Option<&'static IoApic> {
+    ioapics()
+        .iter()
+        .find(|apic| gsi >= apic.gsi_start && gsi < apic.gsi_start + u32::from(apic.count))
+}
+
+pub unsafe fn mask(irq: u8) {
+    let gsi = resolve(irq);
+    let apic = match find_ioapic(gsi) {
+        Some(a) => a,
+        None => return,
+    };
+    apic.set_mask(gsi, true);
+}
+pub unsafe fn unmask(irq: u8) {
+    let gsi = resolve(irq);
+    let apic = match find_ioapic(gsi) {
+        Some(a) => a,
+        None => return,
+    };
+    apic.set_mask(gsi, false);
+}

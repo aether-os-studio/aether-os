@@ -8,10 +8,9 @@ use rmm::{Arch, BumpAllocator, FrameAllocator, FrameCount, FrameUsage, PhysicalA
 use spin::Mutex;
 use syscall::{Error, ENOMEM};
 
-use crate::arch::memory::{
-    paging::{PAGE_MASK, PAGE_SIZE},
-    CurrentRmmArch as RmmA,
-};
+use crate::arch::memory::paging::{PAGE_MASK, PAGE_SIZE};
+
+pub use crate::arch::memory::CurrentRmmArch as RmmA;
 
 pub mod mapper;
 
@@ -913,6 +912,7 @@ impl RefCount {
 fn sections() -> &'static [Section] {
     unsafe { ALLOCATOR_DATA.sections }
 }
+
 pub fn get_page_info(frame: Frame) -> Option<&'static PageInfo> {
     let sections = sections();
 

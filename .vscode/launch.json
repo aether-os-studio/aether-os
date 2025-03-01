@@ -8,7 +8,7 @@
             "program": "${workspaceFolder}/kernel/kernel",
             "args": [],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/kernel",
+            "cwd": "${workspaceFolder}/kernel/",
             "environment": [],
             "externalConsole": false,
             "MIMode": "gdb",

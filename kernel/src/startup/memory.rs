@@ -1,7 +1,7 @@
 use crate::{
     arch::{
         memory::{
-            paging::{entry::EntryFlags, PAGE_SIZE},
+            paging::{entry::EntryFlags, round_up_pages, PAGE_SIZE},
             CurrentRmmArch,
         },
         rmm::page_flags,
@@ -107,6 +107,11 @@ impl MemoryMap {
 
     pub fn free(&self) -> impl Iterator<Item = &MemoryEntry> {
         self.iter().filter(|x| x.kind == BootloaderMemoryKind::Free)
+    }
+
+    pub fn reclaim(&self) -> impl Iterator<Item = &MemoryEntry> {
+        self.iter()
+            .filter(|x| x.kind == BootloaderMemoryKind::Reclaim)
     }
 
     pub fn non_free(&self) -> impl Iterator<Item = &MemoryEntry> {
@@ -300,7 +305,7 @@ static KERNEL_ADDRESS_REQUEST: KernelAddressRequest = KernelAddressRequest::new(
 #[used]
 // The .requests section allows limine to find the requests faster and more safely.
 #[link_section = ".requests"]
-static KERNEL_FILE_REQUEST: KernelFileRequest = KernelFileRequest::new();
+pub static KERNEL_FILE_REQUEST: KernelFileRequest = KernelFileRequest::new();
 
 #[used]
 // The .requests section allows limine to find the requests faster and more safely.
@@ -329,7 +334,8 @@ unsafe fn map_memory<A: Arch>(areas: &[MemoryArea], mut bump_allocator: &mut Bum
 
     log::debug!("Mapping kernel areas");
 
-    let kernel_size = KERNEL_FILE_REQUEST.get_response().unwrap().file().size() as usize;
+    let kernel_size =
+        round_up_pages(KERNEL_FILE_REQUEST.get_response().unwrap().file().size() as usize);
 
     let kernel_address = KERNEL_ADDRESS_REQUEST
         .get_response()
@@ -358,6 +364,20 @@ unsafe fn map_memory<A: Arch>(areas: &[MemoryArea], mut bump_allocator: &mut Bum
             let phys = PhysicalAddress::new(base + i * PAGE_SIZE);
             let virt = A::phys_to_virt(phys);
             let flags = page_flags::<A>(virt);
+            let flush = mapper
+                .map_phys(virt, phys, flags)
+                .expect("failed to map frame");
+            flush.ignore(); // Not the active table
+        }
+    }
+
+    for area in (*MEMORY_MAP.get()).reclaim() {
+        let base = area.start;
+        let size = area.end - area.start;
+        for i in 0..size / PAGE_SIZE {
+            let phys = PhysicalAddress::new(base + i * PAGE_SIZE);
+            let virt = A::phys_to_virt(phys);
+            let flags = page_flags::<A>(virt).custom_flag(EntryFlags::DEV_MEM.bits(), true);
             let flush = mapper
                 .map_phys(virt, phys, flags)
                 .expect("failed to map frame");
