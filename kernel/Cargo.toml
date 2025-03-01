@@ -1,7 +1,23 @@
 [package]
-name = "limine-rust-template"
+name = "kernel"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+bitflags = "2.8.0"
 limine = "0.3.1"
+linked_list_allocator = "0.10.5"
+log = "0.4.26"
+spin = "0.9.8"
+uart_16550 = "0.3.2"
+
+[dependencies.rmm]
+path = "crates/rmm"
+default-features = false
+
+[dependencies.redox_syscall]
+version = "0.5.9"
+default-features = false
+
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+x86 = "0.52.0"

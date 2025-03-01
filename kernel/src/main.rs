@@ -1,9 +1,21 @@
 #![no_std]
 #![no_main]
+#![allow(dead_code)]
+#![feature(int_roundings)]
+#![feature(let_chains)]
+#![feature(sync_unsafe_cell)]
 
-use core::arch::asm;
+mod allocator;
+mod arch;
+mod cpu_set;
+mod klog;
+mod memory;
+mod startup;
 
-use limine::request::{FramebufferRequest, RequestsEndMarker, RequestsStartMarker};
+#[macro_use]
+extern crate bitflags;
+
+use limine::request::{RequestsEndMarker, RequestsStartMarker};
 use limine::BaseRevision;
 
 /// Sets the base revision to the latest revision supported by the crate.
@@ -14,10 +26,6 @@ use limine::BaseRevision;
 #[link_section = ".requests"]
 static BASE_REVISION: BaseRevision = BaseRevision::new();
 
-#[used]
-#[link_section = ".requests"]
-static FRAMEBUFFER_REQUEST: FramebufferRequest = FramebufferRequest::new();
-
 /// Define the stand and end markers for Limine requests.
 #[used]
 #[link_section = ".requests_start_marker"]
@@ -26,42 +34,52 @@ static _START_MARKER: RequestsStartMarker = RequestsStartMarker::new();
 #[link_section = ".requests_end_marker"]
 static _END_MARKER: RequestsEndMarker = RequestsEndMarker::new();
 
-#[no_mangle]
-unsafe extern "C" fn kmain() -> ! {
-    // All limine requests must also be referenced in a called function, otherwise they may be
-    // removed by the linker.
-    assert!(BASE_REVISION.is_supported());
-
-    if let Some(framebuffer_response) = FRAMEBUFFER_REQUEST.get_response() {
-        if let Some(framebuffer) = framebuffer_response.framebuffers().next() {
-            for i in 0..100_u64 {
-                // Calculate the pixel offset using the framebuffer information we obtained above.
-                // We skip `i` scanlines (pitch is provided in bytes) and add `i * 4` to skip `i` pixels forward.
-                let pixel_offset = i * framebuffer.pitch() + i * 4;
-
-                // Write 0xFFFFFFFF to the provided pixel offset to fill it white.
-                *(framebuffer.addr().add(pixel_offset as usize) as *mut u32) = 0xFFFFFFFF;
-            }
-        }
-    }
-
-    hcf();
-}
-
 #[panic_handler]
-fn rust_panic(_info: &core::panic::PanicInfo) -> ! {
+fn rust_panic(info: &core::panic::PanicInfo) -> ! {
+    log::error!("{}", info);
     hcf();
 }
 
 fn hcf() -> ! {
     loop {
-        unsafe {
-            #[cfg(target_arch = "x86_64")]
-            asm!("hlt");
-            #[cfg(any(target_arch = "aarch64", target_arch = "riscv64"))]
-            asm!("wfi");
-            #[cfg(target_arch = "loongarch64")]
-            asm!("idle 0");
-        }
+        core::hint::spin_loop();
     }
+}
+
+// TODO: Use this macro on aarch64 too.
+
+macro_rules! linker_offsets(
+    ($($name:ident),*) => {
+        $(
+        #[inline]
+        pub fn $name() -> usize {
+            extern "C" {
+                // TODO: UnsafeCell?
+                static $name: u8;
+            }
+            unsafe { &$name as *const u8 as usize }
+        }
+        )*
+    }
+);
+
+pub const KERNEL_HEAP_OFFSET: usize = 0xFFFFA00000000000;
+pub const KERNEL_HEAP_SIZE: usize = 8 * 1024 * 1024;
+
+mod kernel_executable_offsets {
+    linker_offsets!(
+        __text_start,
+        __text_end,
+        __rodata_start,
+        __rodata_end,
+        __data_start,
+        __data_end,
+        __bss_start,
+        __bss_end,
+        __usercopy_start,
+        __usercopy_end
+    );
+
+    #[cfg(target_arch = "x86_64")]
+    linker_offsets!(__altrelocs_start, __altrelocs_end);
 }

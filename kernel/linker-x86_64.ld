@@ -23,21 +23,40 @@ SECTIONS
     . = 0xffffffff80000000;
 
     .text : {
-        *(.text .text.*)
+        __text_start = .;
+        *(.text*)
+        __usercopy_start = .;
+        *(.usercopy-fns)
+        __usercopy_end = .;
+        __text_end = .;
     } :text
 
     /* Move to the next memory page for .rodata */
     . = ALIGN(CONSTANT(MAXPAGESIZE));
 
     .rodata : {
-        *(.rodata .rodata.*)
+        __rodata_start = .;
+        *(.rodata*)
+        __altcode_start = .;
+        KEEP(*(.altcode*))
+        __altcode_end = .;
+        . = ALIGN(8);
+        __altrelocs_start = .;
+        KEEP(*(.altrelocs*))
+        __altrelocs_end = .;
+        __altfeatures_start = .;
+        KEEP(*(.altfeatures*))
+        __altfeatures_end = .;
+    __rodata_end = .;
     } :rodata
 
     /* Move to the next memory page for .data */
     . = ALIGN(CONSTANT(MAXPAGESIZE));
 
     .data : {
-        *(.data .data.*)
+        __data_start = .;
+        *(.data*)
+        __data_end = .;
 
         /* Place the sections that contain the Limine requests as part of the .data */
         /* output section. */
@@ -51,9 +70,11 @@ SECTIONS
     /* If you need, for example, .init_array and .fini_array, those should be placed */
     /* above this. */
     .bss : {
-        *(.bss .bss.*)
+        __bss_start = .;
+        *(.bss*)
         *(COMMON)
     } :data
+    __end = .;
 
     /* Discard .note.* and .eh_frame* since they may cause issues on some hosts. */
     /DISCARD/ : {
