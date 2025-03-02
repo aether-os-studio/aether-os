@@ -47,6 +47,9 @@ unsafe extern "C" fn kmain() -> ! {
     crate::acpi::init();
     idt::init();
 
+    crate::context::init();
+    crate::context::thread::Thread::new_kernel_thread(crate::start_kernel);
+
     log::info!("Aether OS initialized");
 
     x86_64::instructions::interrupts::enable();

@@ -1,3 +1,4 @@
+use rmm::VirtualAddress;
 use spin::Lazy;
 use x86_64::instructions::segmentation::{Segment, CS, SS};
 use x86_64::instructions::tables::load_tss;
@@ -29,8 +30,8 @@ impl Default for CpuInfo {
 
 impl CpuInfo {
     #[inline]
-    pub fn set_ring0_rsp(&mut self, rsp: VirtAddr) {
-        self.tss.privilege_stack_table[0] = rsp;
+    pub fn set_ring0_rsp(&mut self, rsp: VirtualAddress) {
+        self.tss.privilege_stack_table[0] = VirtAddr::new(rsp.data() as u64);
     }
 }
 

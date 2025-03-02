@@ -2,7 +2,9 @@ use alloc::collections::BTreeMap;
 use limine::{request::SmpRequest, smp::Cpu};
 use spin::{Lazy, RwLock};
 
-use crate::{acpi::APIC_INIT, startup::memory::NEW_PAGE_TABLE};
+use crate::{
+    acpi::APIC_INIT, context::scheduler::SCHEDULER_INIT, startup::memory::NEW_PAGE_TABLE, CPU_COUNT,
+};
 
 use super::gdt::CpuInfo;
 
@@ -48,6 +50,8 @@ impl Cpus {
     pub fn init_ap(&mut self) {
         let response = SMP_REQUEST.get_response().unwrap();
 
+        CPU_COUNT.store(response.cpus().len(), core::sync::atomic::Ordering::SeqCst);
+
         for cpu in response.cpus() {
             if cpu.lapic_id != *BSP_LAPIC_ID {
                 self.0.insert(cpu.lapic_id, CpuInfo::default());
@@ -71,6 +75,9 @@ unsafe extern "C" fn ap_entry(smp_info: &Cpu) -> ! {
 
     unsafe { super::apic::local::init_ap() };
 
+    while !SCHEDULER_INIT.load(core::sync::atomic::Ordering::SeqCst) {
+        core::hint::spin_loop();
+    }
     log::debug!("APU {} started...", smp_info.id);
 
     x86_64::instructions::interrupts::enable();

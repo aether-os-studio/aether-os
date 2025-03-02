@@ -5,11 +5,13 @@
 #![feature(allocator_api)]
 #![feature(int_roundings)]
 #![feature(let_chains)]
+#![feature(naked_functions)]
 #![feature(sync_unsafe_cell)]
 
 mod acpi;
 mod allocator;
 mod arch;
+mod context;
 mod cpu_set;
 mod klog;
 mod memory;
@@ -19,6 +21,8 @@ extern crate alloc;
 
 #[macro_use]
 extern crate bitflags;
+
+use core::sync::atomic::AtomicUsize;
 
 use arch::apic::local::the_local_apic;
 use cpu_set::LogicalCpuId;
@@ -40,6 +44,12 @@ static _START_MARKER: RequestsStartMarker = RequestsStartMarker::new();
 #[used]
 #[link_section = ".requests_end_marker"]
 static _END_MARKER: RequestsEndMarker = RequestsEndMarker::new();
+
+pub static CPU_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+pub fn cpu_count() -> usize {
+    CPU_COUNT.load(core::sync::atomic::Ordering::SeqCst)
+}
 
 pub fn cpu_id() -> LogicalCpuId {
     LogicalCpuId::new(unsafe { the_local_apic() }.id())
@@ -93,4 +103,12 @@ mod kernel_executable_offsets {
 
     #[cfg(target_arch = "x86_64")]
     linker_offsets!(__altrelocs_start, __altrelocs_end);
+}
+
+pub fn start_kernel() -> ! {
+    loop {
+        log::info!("Start kernel is running");
+    }
+
+    // crate::hcf()
 }

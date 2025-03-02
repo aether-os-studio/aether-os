@@ -1,3 +1,4 @@
+use rmm::VirtualAddress;
 use spin::Lazy;
 use x86_64::{
     registers::control::Cr2,
@@ -5,7 +6,10 @@ use x86_64::{
     structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode},
 };
 
-use crate::arch::ipi::IpiKind;
+use crate::{
+    arch::ipi::{ipi, IpiKind, IpiTarget},
+    context::scheduler::SCHEDULER,
+};
 
 use super::gdt::DOUBLE_FAULT_IST_INDEX;
 
@@ -43,13 +47,25 @@ fn no_irq(_stack_frame: InterruptStackFrame, index: u8, _error_code: Option<u64>
     log::debug!("Unhandled irq {}", index)
 }
 
-extern "x86-interrupt" fn timer_interrupt(_frame: InterruptStackFrame) {
-    crate::arch::apic::local::eoi();
-    crate::arch::ipi::ipi(
-        crate::arch::ipi::IpiKind::Pit,
-        crate::arch::ipi::IpiTarget::Other,
-    );
-    log::debug!("timer interrupt");
+#[naked]
+pub extern "x86-interrupt" fn timer_interrupt(_frame: InterruptStackFrame) {
+    fn timer_handler(context: VirtualAddress) -> VirtualAddress {
+        super::apic::local::eoi();
+        ipi(IpiKind::Pit, IpiTarget::Other);
+        SCHEDULER.lock().schedule(context)
+    }
+
+    unsafe {
+        core::arch::naked_asm!(
+            crate::push_context!(),
+            "mov rdi, rsp",
+            "call {timer_handler}",
+            "mov rsp, rax",
+            crate::pop_context!(),
+            "iretq",
+            timer_handler = sym timer_handler,
+        );
+    }
 }
 
 extern "x86-interrupt" fn segment_not_present(frame: InterruptStackFrame, error_code: u64) {

@@ -8,11 +8,24 @@ use rmm::{Arch, BumpAllocator, FrameAllocator, FrameCount, FrameUsage, PhysicalA
 use spin::Mutex;
 use syscall::{Error, ENOMEM};
 
-use crate::arch::memory::paging::{PAGE_MASK, PAGE_SIZE};
+use crate::{
+    arch::memory::paging::{PAGE_MASK, PAGE_SIZE},
+    KERNEL_HEAP_OFFSET,
+};
 
 pub use crate::arch::memory::CurrentRmmArch as RmmA;
 
 pub mod mapper;
+
+/// The size of a single PML4
+pub const PML4_SIZE: usize = 0x0000_0080_0000_0000;
+pub const PML4_MASK: usize = 0x0000_ff80_0000_0000;
+
+pub const KERNEL_START: usize = 0xffff_ffff_8000_0000;
+
+pub const KERNEL_FILE_PML4: usize = (KERNEL_START & PML4_MASK) / PML4_SIZE;
+pub const KERNEL_HEAP_PML4: usize = (KERNEL_HEAP_OFFSET & PML4_MASK) / PML4_SIZE;
+pub const PHYS_PML4: usize = (RmmA::PHYS_OFFSET & PML4_MASK) / PML4_SIZE;
 
 /// Available physical memory areas
 pub(crate) static AREAS: SyncUnsafeCell<[rmm::MemoryArea; 512]> = SyncUnsafeCell::new(

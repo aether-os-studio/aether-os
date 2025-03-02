@@ -91,7 +91,7 @@ impl LocalApic {
         if self.x2 {
             unsafe { rdmsr(IA32_X2APIC_APICID) as u32 }
         } else {
-            unsafe { self.read(0x20) }
+            unsafe { self.read(0x20) >> 24 }
         }
     }
 

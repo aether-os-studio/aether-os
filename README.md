@@ -1,6 +1,4 @@
-# Limine Rust Template
-
-This repository will demonstrate how to set up a basic kernel in Rust using Limine.
+# Aether OS
 
 ## How to use this?
 

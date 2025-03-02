@@ -23,7 +23,7 @@ pub fn ipi(kind: IpiKind, target: IpiTarget) {
     unsafe { the_local_apic().set_icr(icr) };
 }
 
-use crate::cpu_set::LogicalCpuId;
+use crate::{context::scheduler::SCHEDULER, cpu_set::LogicalCpuId};
 
 #[inline(always)]
 pub fn ipi_single(kind: IpiKind, target: LogicalCpuId) {
@@ -35,9 +35,25 @@ pub fn ipi_single(kind: IpiKind, target: LogicalCpuId) {
     }
 }
 
+use rmm::VirtualAddress;
 use x86_64::structures::idt::InterruptStackFrame;
-
+#[naked]
 pub extern "x86-interrupt" fn pit(_frame: InterruptStackFrame) {
-    crate::arch::apic::local::eoi();
-    log::debug!("pit ipi");
+    fn pit_handler(context: VirtualAddress) -> VirtualAddress {
+        super::apic::local::eoi();
+        ipi(IpiKind::Pit, IpiTarget::Other);
+        SCHEDULER.lock().schedule(context)
+    }
+
+    unsafe {
+        core::arch::naked_asm!(
+            crate::push_context!(),
+            "mov rdi, rsp",
+            "call {pit_handler}",
+            "mov rsp, rax",
+            crate::pop_context!(),
+            "iretq",
+            pit_handler = sym pit_handler,
+        );
+    }
 }
