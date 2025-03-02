@@ -224,7 +224,7 @@ pub unsafe fn deallocate_frame(frame: Frame) {
 
 // // Helper function for quickly mapping device memory
 // pub unsafe fn map_device_memory(addr: PhysicalAddress, len: usize) -> VirtualAddress {
-//     let mut mapper_lock = KernelMapper::lock();
+//     let mut mapper_lock = KernelMapper::lock_manually(LogicalCpuId::BSP);
 //     let mapper = mapper_lock
 //         .get_mut()
 //         .expect("KernelMapper mapper locked re-entrant in map_device_memory");

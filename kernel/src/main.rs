@@ -20,6 +20,8 @@ extern crate alloc;
 #[macro_use]
 extern crate bitflags;
 
+use arch::apic::local::the_local_apic;
+use cpu_set::LogicalCpuId;
 use limine::request::{RequestsEndMarker, RequestsStartMarker};
 use limine::BaseRevision;
 
@@ -38,6 +40,10 @@ static _START_MARKER: RequestsStartMarker = RequestsStartMarker::new();
 #[used]
 #[link_section = ".requests_end_marker"]
 static _END_MARKER: RequestsEndMarker = RequestsEndMarker::new();
+
+pub fn cpu_id() -> LogicalCpuId {
+    LogicalCpuId::new(unsafe { the_local_apic() }.id())
+}
 
 #[panic_handler]
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {

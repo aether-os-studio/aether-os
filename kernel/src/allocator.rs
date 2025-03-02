@@ -1,6 +1,6 @@
 use rmm::{Flusher, PageFlags, PageFlushAll, VirtualAddress};
 
-use crate::{arch::memory::paging::Page, memory::mapper::KernelMapper};
+use crate::{arch::memory::paging::Page, cpu_set::LogicalCpuId, memory::mapper::KernelMapper};
 
 #[global_allocator]
 pub static ALLOCATOR: linked_list_allocator::LockedHeap =
@@ -29,7 +29,11 @@ pub unsafe fn init() {
     let size = crate::KERNEL_HEAP_SIZE;
 
     // Map heap pages
-    map_heap(&mut KernelMapper::lock(), offset, size);
+    map_heap(
+        &mut KernelMapper::lock_manually(LogicalCpuId::BSP),
+        offset,
+        size,
+    );
 
     ALLOCATOR.lock().init(offset as *mut u8, size);
 }

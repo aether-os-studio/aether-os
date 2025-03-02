@@ -239,3 +239,7 @@ pub enum LvtTimerMode {
     Periodic = 0b01,
     TscDeadline = 0b10,
 }
+
+pub fn eoi() {
+    unsafe { the_local_apic().eoi() };
+}

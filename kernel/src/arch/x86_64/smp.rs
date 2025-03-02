@@ -69,6 +69,8 @@ unsafe extern "C" fn ap_entry(smp_info: &Cpu) -> ! {
         core::hint::spin_loop();
     }
 
+    unsafe { super::apic::local::init_ap() };
+
     log::debug!("APU {} started...", smp_info.id);
 
     x86_64::instructions::interrupts::enable();

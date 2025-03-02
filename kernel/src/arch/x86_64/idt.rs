@@ -39,10 +39,12 @@ pub fn init() {
 }
 
 fn no_irq(_stack_frame: InterruptStackFrame, index: u8, _error_code: Option<u64>) {
+    crate::arch::apic::local::eoi();
     log::debug!("Unhandled irq {}", index)
 }
 
 extern "x86-interrupt" fn timer_interrupt(_frame: InterruptStackFrame) {
+    crate::arch::apic::local::eoi();
     crate::arch::ipi::ipi(
         crate::arch::ipi::IpiKind::Pit,
         crate::arch::ipi::IpiTarget::Other,

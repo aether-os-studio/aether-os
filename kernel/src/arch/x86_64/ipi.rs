@@ -38,5 +38,6 @@ pub fn ipi_single(kind: IpiKind, target: LogicalCpuId) {
 use x86_64::structures::idt::InterruptStackFrame;
 
 pub extern "x86-interrupt" fn pit(_frame: InterruptStackFrame) {
+    crate::arch::apic::local::eoi();
     log::debug!("pit ipi");
 }

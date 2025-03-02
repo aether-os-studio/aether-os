@@ -5,7 +5,9 @@ use alloc::boxed::Box;
 use limine::request::RsdpRequest;
 use rmm::{Arch, PhysicalAddress};
 
-use crate::{arch::memory::CurrentRmmArch as RmmA, memory::mapper::KernelMapper};
+use crate::{
+    arch::memory::CurrentRmmArch as RmmA, cpu_set::LogicalCpuId, memory::mapper::KernelMapper,
+};
 
 pub static APIC_INIT: AtomicBool = AtomicBool::new(false);
 
@@ -25,7 +27,7 @@ pub fn init() {
         Box::leak(Box::new(tables))
     };
 
-    let page_table = &mut KernelMapper::lock();
+    let page_table = &mut KernelMapper::lock_manually(LogicalCpuId::BSP);
     unsafe {
         crate::arch::apic::local::init(page_table);
         let madt = acpi_table.find_table::<Madt>().unwrap();

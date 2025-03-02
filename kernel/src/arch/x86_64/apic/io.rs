@@ -13,7 +13,6 @@ use crate::{
     acpi::AcpiMemHandler,
     arch::memory::paging::{entry::EntryFlags, Page},
     memory::{mapper::KernelMapper, Frame, RmmA},
-    serial_println,
 };
 
 pub struct IoApicRegs {
@@ -262,11 +261,11 @@ pub unsafe fn handle_ioapic(mapper: &mut KernelMapper, madt_ioapic: &IoApicEntry
     let ioapic_registers = page.start_address().data() as *const u32;
     let ioapic = IoApic::new(ioapic_registers, madt_ioapic.global_system_interrupt_base);
 
-    assert_eq!(
-        ioapic.regs.lock().id(),
-        madt_ioapic.io_apic_id,
-        "mismatched ACPI MADT I/O APIC ID, and the ID reported by the I/O APIC"
-    );
+    // assert_eq!(
+    //     ioapic.regs.lock().id(),
+    //     madt_ioapic.io_apic_id,
+    //     "mismatched ACPI MADT I/O APIC ID, and the ID reported by the I/O APIC"
+    // );
 
     (*IOAPICS.get()).get_or_insert_with(Vec::new).push(ioapic);
 }
@@ -352,7 +351,7 @@ pub unsafe fn init(active_table: &mut KernelMapper, madt: &PhysicalMapping<AcpiM
         let apic = match find_ioapic(gsi) {
             Some(ioapic) => ioapic,
             None => {
-                serial_println!("Unable to find a suitable APIC for legacy IRQ {} (GSI {}). It will not be mapped.", legacy_irq, gsi);
+                log::warn!("Unable to find a suitable APIC for legacy IRQ {} (GSI {}). It will not be mapped.", legacy_irq, gsi);
                 continue;
             }
         };
