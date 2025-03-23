@@ -33,9 +33,20 @@ SECTIONS
         *(.rodata .rodata.*)
     } :rodata
 
+    /* Move to the next memory page for .eh_frame */
+    . = ALIGN(CONSTANT(MAXPAGESIZE));
+    .eh_frame : {
+        __eh_frame_hdr_start = .;
+		*(.eh_frame_hdr)
+		__eh_frame_hdr_end = .;
+		__eh_frame_start = .;
+		*(.eh_frame)
+		*(.rela.eh_frame)
+		__eh_frame_end = .;
+    }
+
     /* Move to the next memory page for .data */
     . = ALIGN(CONSTANT(MAXPAGESIZE));
-
     .data : {
         *(.data .data.*)
 
@@ -55,9 +66,8 @@ SECTIONS
         *(COMMON)
     } :data
 
-    /* Discard .note.* and .eh_frame* since they may cause issues on some hosts. */
+    /* Discard .note.* since they may cause issues on some hosts. */
     /DISCARD/ : {
-        *(.eh_frame*)
         *(.note .note.*)
     }
 }

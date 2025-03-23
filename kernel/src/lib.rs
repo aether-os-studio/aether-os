@@ -9,6 +9,7 @@
 use limine::mp::Cpu;
 use pctable::idt::IDT;
 use smp::{BSP_LAPIC_ID, CPUS};
+use x86_64::registers::control::{Cr0, Cr0Flags, Cr4, Cr4Flags};
 
 extern crate alloc;
 
@@ -22,7 +23,23 @@ mod memory;
 mod pctable;
 mod smp;
 
+mod unwind;
+
+pub fn init_sse() {
+    let mut cr0 = Cr0::read();
+    cr0.remove(Cr0Flags::EMULATE_COPROCESSOR);
+    cr0.insert(Cr0Flags::MONITOR_COPROCESSOR);
+    unsafe { Cr0::write(cr0) };
+
+    let mut cr4 = Cr4::read();
+    cr4.insert(Cr4Flags::OSFXSR);
+    cr4.insert(Cr4Flags::OSXMMEXCPT_ENABLE);
+    unsafe { Cr4::write(cr4) };
+}
+
 pub fn init() {
+    init_sse();
+
     memory::init_heap();
 
     kdevice::log::init();
@@ -37,18 +54,14 @@ pub fn init() {
 }
 
 unsafe extern "C" fn ap_entry(smp_info: &Cpu) -> ! {
+    init_sse();
+
     CPUS.write().load(smp_info.lapic_id);
     IDT.load();
 
     debug!("Application Processor {} started", smp_info.id);
 
     hcf()
-}
-
-#[panic_handler]
-fn rust_panic(info: &core::panic::PanicInfo) -> ! {
-    error!("{}", info);
-    hcf();
 }
 
 pub fn hcf() -> ! {

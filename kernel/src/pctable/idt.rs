@@ -5,6 +5,32 @@ use x86_64::structures::idt::InterruptDescriptorTable;
 use x86_64::structures::idt::InterruptStackFrame;
 use x86_64::structures::idt::PageFaultErrorCode;
 
+pub struct StackTrace {
+    pub fp: usize,
+    pub pc_ptr: *const usize,
+}
+
+impl StackTrace {
+    pub unsafe fn start() -> Option<Self> {
+        let mut fp: usize;
+        core::arch::asm!("mov {}, rbp", out(reg) fp);
+        let pc_ptr = fp.checked_add(core::mem::size_of::<usize>())?;
+        Some(Self {
+            fp,
+            pc_ptr: pc_ptr as *const usize,
+        })
+    }
+
+    pub unsafe fn next(self) -> Option<Self> {
+        let fp = *(self.fp as *const usize);
+        let pc_ptr = fp.checked_add(core::mem::size_of::<usize>())?;
+        Some(Self {
+            fp,
+            pc_ptr: pc_ptr as *const usize,
+        })
+    }
+}
+
 use super::gdt::DOUBLE_FAULT_IST_INDEX;
 
 const INTERRUPT_INDEX_OFFSET: u8 = 32;

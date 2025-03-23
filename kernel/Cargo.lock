@@ -24,7 +24,9 @@ dependencies = [
  "humansize",
  "limine",
  "log",
+ "object",
  "os-terminal",
+ "rustc-demangle",
  "spin",
  "uart_16550",
  "x2apic",
@@ -179,6 +181,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1064d564ae026ae123bf5d607318b42a5b31d70a3c48e6ea7ee44cce4cdb095e"
 
 [[package]]
+name = "object"
+version = "0.36.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62948e14d923ea95ea2c7c86c71013138b66525b86bdc08d2dcc262bdb497b87"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "os-terminal"
 version = "0.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -232,6 +243,12 @@ checksum = "6c297679cb867470fa8c9f67dbba74a78d78e3e98d7cf2b08d6d71540f797332"
 dependencies = [
  "bitflags 1.3.2",
 ]
+
+[[package]]
+name = "rustc-demangle"
+version = "0.1.24"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "719b953e2095829ee67db738b3bfa9fa368c94900df327b3f07fe6e794d2fe1f"
 
 [[package]]
 name = "rustversion"
