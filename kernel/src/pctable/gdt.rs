@@ -32,6 +32,11 @@ impl CpuInfo {
     pub fn set_ring0_rsp(&mut self, rsp: VirtAddr) {
         self.tss.privilege_stack_table[0] = rsp;
     }
+
+    #[inline]
+    pub fn get_ring0_rsp(&mut self) -> VirtAddr {
+        self.tss.privilege_stack_table[0]
+    }
 }
 
 impl CpuInfo {

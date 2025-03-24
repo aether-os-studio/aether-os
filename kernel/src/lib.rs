@@ -6,6 +6,10 @@
 #![feature(allocator_api)]
 #![feature(naked_functions)]
 
+use core::sync::atomic::Ordering;
+
+use apic::{APIC_INIT, LAPIC, LAPIC_TIMER_INITIAL};
+use context::scheduler::SCHEDULER_INIT;
 use limine::mp::Cpu;
 use pctable::idt::IDT;
 use smp::{BSP_LAPIC_ID, CPUS};
@@ -16,12 +20,13 @@ extern crate alloc;
 #[macro_use]
 extern crate log;
 
-mod acpi;
-mod apic;
-mod kdevice;
-mod memory;
-mod pctable;
-mod smp;
+pub mod acpi;
+pub mod apic;
+pub mod context;
+pub mod kdevice;
+pub mod memory;
+pub mod pctable;
+pub mod smp;
 
 mod unwind;
 
@@ -51,6 +56,8 @@ pub fn init() {
     CPUS.write().init_ap();
 
     apic::init();
+
+    context::init();
 }
 
 unsafe extern "C" fn ap_entry(smp_info: &Cpu) -> ! {
@@ -59,7 +66,19 @@ unsafe extern "C" fn ap_entry(smp_info: &Cpu) -> ! {
     CPUS.write().load(smp_info.lapic_id);
     IDT.load();
 
-    debug!("Application Processor {} started", smp_info.id);
+    while !APIC_INIT.load(Ordering::SeqCst) {
+        core::hint::spin_loop()
+    }
+    LAPIC.lock().enable();
+
+    let timer_initial = LAPIC_TIMER_INITIAL.load(Ordering::Relaxed);
+    LAPIC.lock().set_timer_initial(timer_initial);
+
+    while !SCHEDULER_INIT.load(Ordering::SeqCst) {
+        core::hint::spin_loop()
+    }
+
+    log::debug!("Application Processor {} started", smp_info.id);
 
     hcf()
 }

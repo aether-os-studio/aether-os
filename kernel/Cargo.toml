@@ -14,6 +14,7 @@ os-terminal = "0.6.7"
 rustc-demangle = "0.1.24"
 spin = "0.9.8"
 uart_16550 = "0.3.2"
+x86 = "0.52.0"
 x86_64 = "0.15.2"
 
 [dependencies.derive_more]

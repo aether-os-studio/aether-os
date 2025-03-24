@@ -48,7 +48,7 @@ impl Cpus {
         let response = MP_REQUEST.get_response().unwrap();
 
         for cpu in response.cpus() {
-            if cpu.id != *BSP_LAPIC_ID {
+            if cpu.lapic_id != *BSP_LAPIC_ID {
                 self.0.insert(cpu.lapic_id, CpuInfo::default());
                 cpu.goto_address.write(ap_entry);
             }

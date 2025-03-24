@@ -31,6 +31,8 @@ impl StackTrace {
     }
 }
 
+use crate::context::scheduler::SCHEDULER;
+
 use super::gdt::DOUBLE_FAULT_IST_INDEX;
 
 const INTERRUPT_INDEX_OFFSET: u8 = 32;
@@ -75,19 +77,17 @@ pub static IDT: Lazy<InterruptDescriptorTable> = Lazy::new(|| {
 #[naked]
 pub extern "x86-interrupt" fn timer_interrupt(_frame: InterruptStackFrame) {
     fn timer_handler(context: VirtAddr) -> VirtAddr {
-        // crate::apic::end_of_interrupt();
-        // SCHEDULER.lock().schedule(context)
-
-        context
+        crate::apic::end_of_interrupt();
+        SCHEDULER.lock().schedule(context)
     }
 
     unsafe {
         core::arch::naked_asm!(
-            // crate::push_context!(),
+            crate::push_context!(),
             "mov rdi, rsp",
             "call {timer_handler}",
             "mov rsp, rax",
-            // crate::pop_context!(),
+            crate::pop_context!(),
             "iretq",
             timer_handler = sym timer_handler,
         );
