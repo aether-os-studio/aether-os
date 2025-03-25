@@ -82,7 +82,11 @@ impl LocalApic {
 
     /// Returns the local APIC ID.
     pub unsafe fn id(&self) -> u32 {
-        self.regs.id() as u32
+        if self.mode == LocalApicMode::X2Apic {
+            return self.regs.id() as u32;
+        }
+
+        self.regs.id() as u32 >> 24
     }
 
     /// Returns the version number of the local APIC.

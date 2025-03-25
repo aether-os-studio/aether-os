@@ -25,7 +25,7 @@ pub static ACPI: Lazy<Acpi> = Lazy::new(|| {
         Box::leak(Box::new(acpi_tables.unwrap()))
     };
 
-    log::info!("Find ACPI tables successfully!");
+    info!("Find ACPI tables successfully!");
 
     let platform_info = acpi_tables
         .platform_info()

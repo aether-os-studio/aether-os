@@ -1,4 +1,8 @@
+/.vscode
 /limine
 /ovmf
+/rust
+/target
 *.iso
 *.hdd
+*.txt

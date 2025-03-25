@@ -78,7 +78,7 @@ pub unsafe fn calibrate_timer() {
 
     let average_ticks_per_ms = lapic_total_ticks / TIMER_CALIBRATION_ITERATION;
     let calibrated_timer_initial = average_ticks_per_ms * 1000 / TIMER_FREQUENCY_HZ;
-    log::debug!("Calibrated timer initial: {}", calibrated_timer_initial);
+    debug!("Calibrated timer initial: {}", calibrated_timer_initial);
 
     lapic.set_timer_mode(TimerMode::Periodic);
     lapic.set_timer_initial(calibrated_timer_initial);

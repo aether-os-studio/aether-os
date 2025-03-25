@@ -50,3 +50,9 @@ pub fn ref_current_page_table() -> OffsetPageTable<'static> {
     let physical_memory_offset = VirtAddr::new(*PHYSICAL_MEMORY_OFFSET);
     unsafe { OffsetPageTable::new(&mut *page_table, physical_memory_offset) }
 }
+
+pub fn ref_page_table(page_table_addr: PhysAddr) -> OffsetPageTable<'static> {
+    let page_table = convert_physical_to_virtual(page_table_addr).as_mut_ptr::<PageTable>();
+    let physical_memory_offset = VirtAddr::new(*PHYSICAL_MEMORY_OFFSET);
+    unsafe { OffsetPageTable::new(&mut *page_table, physical_memory_offset) }
+}

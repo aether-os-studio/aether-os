@@ -27,6 +27,7 @@ pub mod kdevice;
 pub mod memory;
 pub mod pctable;
 pub mod smp;
+pub mod syscall;
 
 mod unwind;
 
@@ -57,6 +58,8 @@ pub fn init() {
 
     apic::init();
 
+    syscall::init();
+
     context::init();
 }
 
@@ -74,11 +77,13 @@ unsafe extern "C" fn ap_entry(smp_info: &Cpu) -> ! {
     let timer_initial = LAPIC_TIMER_INITIAL.load(Ordering::Relaxed);
     LAPIC.lock().set_timer_initial(timer_initial);
 
+    syscall::init();
+
     while !SCHEDULER_INIT.load(Ordering::SeqCst) {
         core::hint::spin_loop()
     }
 
-    log::debug!("Application Processor {} started", smp_info.id);
+    debug!("Application Processor {} started", smp_info.id);
 
     hcf()
 }

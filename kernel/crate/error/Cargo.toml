@@ -1,0 +1,8 @@
+[package]
+edition = "2024"
+name = "error"
+version = "0.1.0"
+
+[dependencies]
+num-derive = "0.3"
+num-traits = {git = "https://git.mirrors.dragonos.org.cn/DragonOS-Community/num-traits.git", rev = "1597c1c", default-features = false}

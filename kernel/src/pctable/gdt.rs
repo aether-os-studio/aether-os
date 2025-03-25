@@ -7,7 +7,7 @@ use x86_64::structures::gdt::{Descriptor, SegmentSelector};
 use x86_64::structures::tss::TaskStateSegment;
 
 pub const DOUBLE_FAULT_IST_INDEX: usize = 0;
-pub const FAULT_STACK_SIZE: usize = 256;
+pub const FAULT_STACK_SIZE: usize = 2048;
 
 pub struct CpuInfo {
     gdt: GlobalDescriptorTable,
@@ -22,7 +22,7 @@ impl Default for CpuInfo {
             gdt: GlobalDescriptorTable::new(),
             tss: TaskStateSegment::new(),
             selectors: None,
-            fault_stack: [0; FAULT_STACK_SIZE],
+            fault_stack: [0u8; FAULT_STACK_SIZE],
         }
     }
 }
@@ -36,6 +36,11 @@ impl CpuInfo {
     #[inline]
     pub fn get_ring0_rsp(&mut self) -> VirtAddr {
         self.tss.privilege_stack_table[0]
+    }
+
+    #[inline]
+    pub fn set_iomap_base(&mut self, offset: u16) {
+        self.tss.iomap_base = offset;
     }
 }
 
@@ -62,7 +67,7 @@ impl CpuInfo {
         unsafe {
             CS::set_reg(selectors.code_selector);
             SS::set_reg(selectors.data_selector);
-            load_tss(selectors.tss_selector.unwrap());
+            load_tss(tss_selector.unwrap());
         }
     }
 }

@@ -1,28 +1,11 @@
-use x86_64::{PhysAddr, VirtAddr, structures::gdt::SegmentSelector};
+use x86_64::structures::gdt::SegmentSelector;
+use x86_64::{PhysAddr, VirtAddr};
 
-#[derive(Default, Clone, Copy)]
-pub struct IntrContext {
-    pub rip: usize,
-    pub cs: usize,
-    pub rflags: usize,
-    pub rsp: usize,
-    pub ss: usize,
-}
-
-#[derive(Default, Clone, Copy)]
-pub struct GenericContext {
-    pub rbp: usize,
-    pub rsi: usize,
-    pub rdi: usize,
-
-    pub rdx: usize,
-    pub rcx: usize,
-    pub rbx: usize,
-    pub rax: usize,
-}
-
-#[derive(Default, Clone, Copy)]
-pub struct ArchSpecContext {
+#[derive(Debug, Clone, Copy, Default)]
+#[repr(C, packed)]
+#[allow(dead_code)]
+pub struct Context {
+    pub cr3: usize,
     pub r15: usize,
     pub r14: usize,
     pub r13: usize,
@@ -33,42 +16,38 @@ pub struct ArchSpecContext {
     pub r9: usize,
 
     pub r8: usize,
-}
+    pub rbp: usize,
+    pub rsi: usize,
+    pub rdi: usize,
 
-#[derive(Default, Clone, Copy)]
-pub struct Context {
-    pub cr3: usize,
+    pub rdx: usize,
+    pub rcx: usize,
+    pub rbx: usize,
+    pub rax: usize,
 
-    pub arch_spec: ArchSpecContext,
-
-    pub generic: GenericContext,
-
-    pub intr: IntrContext,
+    pub rip: usize,
+    pub cs: usize,
+    pub rflags: usize,
+    pub rsp: usize,
+    pub ss: usize,
 }
 
 impl Context {
     pub fn init(
         &mut self,
-        entry: usize,
-        stack_end: VirtAddr,
-        page_table_addr: PhysAddr,
-        segment_selector: (SegmentSelector, SegmentSelector),
-        argc: usize,
-        argv: usize,
-        envp: usize,
+        entry_point: usize,
+        stack_end_address: VirtAddr,
+        page_table_address: PhysAddr,
+        segment_selectors: (SegmentSelector, SegmentSelector),
     ) {
-        self.intr.rflags = 0x200;
-        self.intr.rip = entry;
-        self.intr.rsp = stack_end.as_u64() as usize;
-        self.cr3 = page_table_addr.as_u64() as usize;
+        self.rflags = 0x200;
+        self.rip = entry_point;
+        self.rsp = stack_end_address.as_u64() as usize;
+        self.cr3 = page_table_address.as_u64() as usize;
 
-        let (code_selector, data_selector) = segment_selector;
-        self.intr.cs = code_selector.0 as usize;
-        self.intr.ss = data_selector.0 as usize;
-
-        self.generic.rdi = argc;
-        self.generic.rsi = argv;
-        self.generic.rdx = envp;
+        let (code_selector, data_selector) = segment_selectors;
+        self.cs = code_selector.0 as usize;
+        self.ss = data_selector.0 as usize;
     }
 }
 
@@ -104,6 +83,8 @@ macro_rules! push_context {
             push r13
             push r14
             push r15
+            mov r15, cr3
+            push r15
             "#,
         )
     };
@@ -114,6 +95,8 @@ macro_rules! pop_context {
     () => {
         concat!(
             r#"
+            pop r15
+            mov cr3, r15
             pop r15
             pop r14
             pop r13

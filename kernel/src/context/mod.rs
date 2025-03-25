@@ -1,6 +1,8 @@
-pub mod ctx;
-pub mod kstack;
+pub mod context;
+pub mod process;
 pub mod scheduler;
-pub mod task;
+pub mod stack;
+pub mod thread;
+pub mod timer;
 
-pub use scheduler::init;
+pub use self::scheduler::init;

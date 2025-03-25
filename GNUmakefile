@@ -9,7 +9,19 @@ override USER_VARIABLE = $(if $(filter $(origin $(1)),default undefined),$(eval 
 $(call USER_VARIABLE,KARCH,x86_64)
 
 # Default user QEMU flags. These are appended to the QEMU command calls.
-$(call USER_VARIABLE,QEMUFLAGS,-m 2G -serial stdio -smp 4)
+$(call USER_VARIABLE,QEMUFLAGS,-m 8G -serial stdio -smp 4)
+
+$(call USER_VARIABLE,DEBUG,false)
+
+$(call USER_VARIABLE,KVM,false)
+
+ifeq ($(DEBUG), true)
+override QEMUFLAGS := $(QEMUFLAGS) -s -S
+endif
+
+ifeq ($(KVM), true)
+override QEMUFLAGS := $(QEMUFLAGS) --enable-kvm
+endif
 
 override IMAGE_NAME := aether-$(KARCH)
 
@@ -75,7 +87,11 @@ limine/limine:
 kernel:
 	$(MAKE) -C kernel
 
-$(IMAGE_NAME).iso: limine/limine kernel
+.PHONY: user
+user:
+	$(MAKE) -C usr
+
+$(IMAGE_NAME).iso: limine/limine usr kernel
 	rm -rf iso_root
 	mkdir -p iso_root/boot
 	cp -v kernel/kernel iso_root/boot/
@@ -95,7 +111,7 @@ ifeq ($(KARCH),x86_64)
 endif
 	rm -rf iso_root
 
-$(IMAGE_NAME).hdd: limine/limine kernel
+$(IMAGE_NAME).hdd: limine/limine usr kernel
 	rm -f $(IMAGE_NAME).hdd
 	dd if=/dev/zero bs=1M count=0 seek=64 of=$(IMAGE_NAME).hdd
 	sgdisk $(IMAGE_NAME).hdd -n 1:2048 -t 1:ef00

@@ -5,7 +5,10 @@ version = "0.1.0"
 
 [dependencies]
 acpi = "5.2.0"
+asc = {path = "../asc"}
 bit_field = "0.10.2"
+derive-where = "1.2.7"
+error = {path = "crate/error"}
 good_memory_allocator = "0.1.7"
 humansize = "2.1.3"
 limine = "0.4"

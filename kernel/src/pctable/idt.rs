@@ -32,6 +32,7 @@ impl StackTrace {
 }
 
 use crate::context::scheduler::SCHEDULER;
+use crate::context::timer::TIMER;
 
 use super::gdt::DOUBLE_FAULT_IST_INDEX;
 
@@ -51,6 +52,12 @@ pub enum InterruptIndex {
 pub static IDT: Lazy<InterruptDescriptorTable> = Lazy::new(|| {
     let mut idt = InterruptDescriptorTable::new();
 
+    unsafe {
+        idt.double_fault
+            .set_handler_fn(double_fault)
+            .set_stack_index(DOUBLE_FAULT_IST_INDEX as u16);
+    }
+
     idt.breakpoint.set_handler_fn(breakpoint);
     idt.segment_not_present.set_handler_fn(segment_not_present);
     idt.invalid_opcode.set_handler_fn(invalid_opcode);
@@ -64,12 +71,6 @@ pub static IDT: Lazy<InterruptDescriptorTable> = Lazy::new(|| {
     idt[InterruptIndex::Keyboard as u8].set_handler_fn(keyboard_interrupt);
     idt[InterruptIndex::Mouse as u8].set_handler_fn(mouse_interrupt);
     idt[InterruptIndex::HpetTimer as u8].set_handler_fn(hpet_timer_interrupt);
-
-    unsafe {
-        idt.double_fault
-            .set_handler_fn(double_fault)
-            .set_stack_index(DOUBLE_FAULT_IST_INDEX as u16);
-    }
 
     idt
 });
@@ -96,43 +97,43 @@ pub extern "x86-interrupt" fn timer_interrupt(_frame: InterruptStackFrame) {
 
 extern "x86-interrupt" fn lapic_error(_frame: InterruptStackFrame) {
     crate::apic::end_of_interrupt();
-    log::error!("Local APIC error!");
+    error!("Local APIC error!");
 }
 
 extern "x86-interrupt" fn spurious_interrupt(_frame: InterruptStackFrame) {
     crate::apic::end_of_interrupt();
-    log::debug!("Received spurious interrupt!");
+    debug!("Received spurious interrupt!");
 }
 
 extern "x86-interrupt" fn hpet_timer_interrupt(_frame: InterruptStackFrame) {
     crate::apic::end_of_interrupt();
-    // TIMER.lock().wakeup();
+    TIMER.lock().wakeup();
 }
 
 extern "x86-interrupt" fn segment_not_present(frame: InterruptStackFrame, error_code: u64) {
-    log::error!("Exception: Segment Not Present\n{:#?}", frame);
-    log::error!("Error Code: {:#x}", error_code);
+    error!("Exception: Segment Not Present\n{:#?}", frame);
+    error!("Error Code: {:#x}", error_code);
     panic!("Unrecoverable fault occured, halting!");
 }
 
 extern "x86-interrupt" fn general_protection_fault(frame: InterruptStackFrame, error_code: u64) {
-    log::error!("Exception: General Protection Fault\n{:#?}", frame);
-    log::error!("Error Code: {:#x}", error_code);
+    error!("Exception: General Protection Fault\n{:#?}", frame);
+    error!("Error Code: {:#x}", error_code);
     x86_64::instructions::hlt();
 }
 
 extern "x86-interrupt" fn invalid_opcode(frame: InterruptStackFrame) {
-    log::error!("Exception: Invalid Opcode\n{:#?}", frame);
+    error!("Exception: Invalid Opcode\n{:#?}", frame);
     x86_64::instructions::hlt();
 }
 
 extern "x86-interrupt" fn breakpoint(frame: InterruptStackFrame) {
-    log::debug!("Exception: Breakpoint\n{:#?}", frame);
+    debug!("Exception: Breakpoint\n{:#?}", frame);
 }
 
 extern "x86-interrupt" fn double_fault(frame: InterruptStackFrame, error_code: u64) -> ! {
-    log::error!("Exception: Double Fault\n{:#?}", frame);
-    log::error!("Error Code: {:#x}", error_code);
+    error!("Exception: Double Fault\n{:#?}", frame);
+    error!("Error Code: {:#x}", error_code);
     panic!("Unrecoverable fault occured, halting!");
 }
 
@@ -145,14 +146,14 @@ extern "x86-interrupt" fn mouse_interrupt(_frame: InterruptStackFrame) {
 }
 
 extern "x86-interrupt" fn page_fault(frame: InterruptStackFrame, error_code: PageFaultErrorCode) {
-    log::warn!("Exception: Page Fault\n{:#?}", frame);
-    log::warn!("Error Code: {:#x}", error_code);
+    warn!("Exception: Page Fault\n{:#?}", frame);
+    warn!("Error Code: {:#x}", error_code);
     match Cr2::read() {
         Ok(address) => {
-            log::warn!("Fault Address: {:#x}", address);
+            warn!("Fault Address: {:#x}", address);
         }
         Err(error) => {
-            log::warn!("Invalid virtual address: {:?}", error);
+            warn!("Invalid virtual address: {:?}", error);
         }
     }
     panic!("Cannot recover from page fault, halting!");

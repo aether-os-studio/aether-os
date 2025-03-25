@@ -25,7 +25,7 @@ pub static HPET: Lazy<Hpet> = Lazy::new(|| {
     .unwrap();
 
     let hpet = Hpet::new(virtual_address.as_u64());
-    log::info!("HPET: {}", hpet);
+    info!("HPET: {}", hpet);
     hpet.enable_all().enable_timer()
 });
 
@@ -105,8 +105,8 @@ impl Hpet {
             let route_cap = old_config.get_bits(32..63);
 
             if !route_cap.get_bit(IrqVector::HpetTimer as usize) {
-                log::warn!("HPET timer does not support our IRQ vector!");
-                log::info!("Timer route capabilities: {:#032b}", route_cap);
+                warn!("HPET timer does not support our IRQ vector!");
+                info!("Timer route capabilities: {:#032b}", route_cap);
             }
 
             let timer_config = ((IrqVector::HpetTimer as u64) << 9) | (1 << 2);

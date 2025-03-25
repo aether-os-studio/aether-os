@@ -20,5 +20,5 @@ pub fn init() {
     };
 
     APIC_INIT.store(true, Ordering::SeqCst);
-    log::info!("APIC initialized successfully!");
+    info!("APIC initialized successfully!");
 }

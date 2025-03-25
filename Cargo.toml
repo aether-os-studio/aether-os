@@ -1,0 +1,4 @@
+[workspace]
+default-members = ["kernel"]
+members = ["asc", "kernel/crate/*", "usr/*", "kernel", "libaether"]
+resolver = "2"
