@@ -2,6 +2,7 @@ use spin::Lazy;
 use x86_64::VirtAddr;
 use x86_64::instructions::segmentation::{CS, SS, Segment};
 use x86_64::instructions::tables::load_tss;
+use x86_64::registers::segmentation::{FS, GS};
 use x86_64::structures::gdt::GlobalDescriptorTable;
 use x86_64::structures::gdt::{Descriptor, SegmentSelector};
 use x86_64::structures::tss::TaskStateSegment;
@@ -68,6 +69,9 @@ impl CpuInfo {
             CS::set_reg(selectors.code_selector);
             SS::set_reg(selectors.data_selector);
             load_tss(tss_selector.unwrap());
+
+            FS::set_reg(selectors.data_selector);
+            GS::set_reg(selectors.data_selector);
         }
     }
 }

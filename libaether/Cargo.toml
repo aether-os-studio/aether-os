@@ -1,7 +1,0 @@
-[package]
-edition = "2024"
-name = "libaether"
-version = "0.1.0"
-
-[dependencies]
-asc = {path = "../asc"}

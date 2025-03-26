@@ -23,6 +23,8 @@ extern crate log;
 pub mod acpi;
 pub mod apic;
 pub mod context;
+pub mod driver;
+pub mod fs;
 pub mod kdevice;
 pub mod memory;
 pub mod pctable;
@@ -61,6 +63,10 @@ pub fn init() {
     syscall::init();
 
     context::init();
+
+    driver::init();
+
+    fs::init();
 }
 
 unsafe extern "C" fn ap_entry(smp_info: &Cpu) -> ! {
@@ -102,4 +108,26 @@ pub fn hcf() -> ! {
             core::arch::asm!("idle 0");
         }
     }
+}
+
+pub fn addr_of<T>(reffer: &T) -> usize {
+    reffer as *const T as usize
+}
+
+pub fn ref_to_mut<T>(reffer: &T) -> &mut T {
+    unsafe { &mut *(addr_of(reffer) as *const T as *mut T) }
+}
+
+pub fn ref_to_static<T>(reffer: &T) -> &'static T {
+    unsafe { &*(addr_of(reffer) as *const T) }
+}
+
+#[macro_export]
+macro_rules! unsafe_trait_impl {
+    ($struct: ident, $trait: ident) => {
+        unsafe impl $trait for $struct {}
+    };
+    ($struct: ident, $trait: ident, $life: tt) => {
+        unsafe impl<$life> $trait for $struct<$life> {}
+    };
 }

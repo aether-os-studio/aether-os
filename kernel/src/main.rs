@@ -20,8 +20,6 @@ static _START_MARKER: RequestsStartMarker = RequestsStartMarker::new();
 #[unsafe(link_section = ".requests_end_marker")]
 static _END_MARKER: RequestsEndMarker = RequestsEndMarker::new();
 
-pub static INIT_BUF: &[u8] = include_bytes!("../../target/x86_64-unknown-none/debug/init");
-
 #[unsafe(no_mangle)]
 unsafe extern "C" fn kmain() -> ! {
     // All limine requests must also be referenced in a called function, otherwise they may be
@@ -30,7 +28,7 @@ unsafe extern "C" fn kmain() -> ! {
 
     aether_kernel::init();
 
-    aether_kernel::context::process::Process::create("init", INIT_BUF);
+    log::info!("Aether OS init done");
 
     aether_kernel::hcf();
 }

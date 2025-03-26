@@ -103,6 +103,22 @@ pub extern "C" fn syscall_matcher(context: &mut Context) -> VirtAddr {
 
             SystemError::ENOENT.to_posix_errno() as isize
         }
+        SYS_OPEN => {
+            let buf = unsafe { core::slice::from_raw_parts(arg1 as *const u8, arg2) };
+            let str = str::from_utf8(buf).unwrap();
+
+            fs::sys_open(str)
+        }
+        SYS_READ => {
+            let buf = unsafe { core::slice::from_raw_parts_mut(arg2 as *mut u8, arg3) };
+
+            fs::sys_read(arg1, buf)
+        }
+        SYS_WRITE => {
+            let buf = unsafe { core::slice::from_raw_parts(arg2 as *const u8, arg3) };
+
+            fs::sys_write(arg1, buf)
+        }
         _ => SystemError::ENOSYS.to_posix_errno() as isize,
     };
 
@@ -123,7 +139,7 @@ pub fn do_fork(context: &mut Context, vfork: bool) -> isize {
             .do_fork(context, vfork);
     }
 
-    return 0;
+    0
 }
 
 pub fn sys_yield() -> isize {
@@ -147,3 +163,5 @@ pub fn sys_exit(_code: usize) -> isize {
 
     SystemError::ESRCH.to_posix_errno() as isize
 }
+
+mod fs;

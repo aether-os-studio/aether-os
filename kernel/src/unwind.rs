@@ -12,7 +12,7 @@ type ExeRequest = ExecutableFileRequest;
 
 #[used]
 #[unsafe(link_section = ".requests")]
-static EXE_REQUEST: ExeRequest = ExeRequest::new();
+pub static EXE_REQUEST: ExeRequest = ExeRequest::new();
 
 static KERNEL_FILE: Lazy<File> = Lazy::new(|| unsafe {
     let kernel = EXE_REQUEST.get_response().unwrap().file();

@@ -111,8 +111,6 @@ impl Thread {
         thread.context.r14 = context.r14;
         thread.context.r15 = context.r15;
 
-        info!("{:#x?}", thread.context);
-
         let thread = Arc::new(RwLock::new(thread));
         process.threads.push(thread.clone());
 

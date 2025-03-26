@@ -1,8 +1,9 @@
+use alloc::collections::btree_map::BTreeMap;
 use alloc::string::String;
 use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
 use core::fmt::Debug;
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use object::{File, Object, ObjectSegment};
 use spin::{Lazy, RwLock};
 use x86_64::VirtAddr;
@@ -10,6 +11,7 @@ use x86_64::structures::paging::OffsetPageTable;
 
 use super::context::Context;
 use super::thread::{SharedThread, Thread};
+use crate::fs::vfs::inode::InodeRef;
 use crate::memory::{ExtendedPageTable, ref_current_page_table, ref_page_table};
 use crate::memory::{FRAME_ALLOCATOR, KERNEL_PAGE_TABLE};
 use crate::memory::{MappingType, MemoryManager};
@@ -42,6 +44,8 @@ pub struct Process {
     pub name: String,
     pub page_table: OffsetPageTable<'static>,
     pub threads: Vec<SharedThread>,
+    pub next_fd: AtomicUsize,
+    pub files: BTreeMap<usize, (InodeRef, bool, usize)>,
 }
 
 impl Process {
@@ -51,6 +55,8 @@ impl Process {
             name: String::from(name),
             page_table,
             threads: Vec::new(),
+            next_fd: AtomicUsize::new(3),
+            files: BTreeMap::new(),
         }
     }
 
