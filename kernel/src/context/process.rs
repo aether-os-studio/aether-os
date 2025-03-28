@@ -1,9 +1,11 @@
 use alloc::collections::btree_map::BTreeMap;
+use alloc::ffi::CString;
 use alloc::string::String;
 use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
 use core::fmt::Debug;
 use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use error::SystemError;
 use object::{File, Object, ObjectSegment};
 use spin::{Lazy, RwLock};
 use x86_64::VirtAddr;
@@ -38,14 +40,40 @@ impl ProcessId {
     }
 }
 
+/// 程序初始化信息，这些信息会被压入用户栈中
+#[derive(Debug)]
+pub struct ProcInitInfo {
+    pub proc_name: CString,
+    pub args: Vec<CString>,
+    pub envs: Vec<CString>,
+    pub auxv: BTreeMap<u8, usize>,
+}
+
+pub const BRK_START_BASE_ADDR: usize = 0x700000000000;
+pub const DEFAULT_BRK_SIZE: usize = 0x8000;
+
 #[allow(dead_code)]
 pub struct Process {
     pub id: ProcessId,
     pub name: String,
     pub page_table: OffsetPageTable<'static>,
     pub threads: Vec<SharedThread>,
+    pub init_info: ProcInitInfo,
+    pub brk_start: usize,
+    pub brk_end: usize,
     pub next_fd: AtomicUsize,
     pub files: BTreeMap<usize, (InodeRef, bool, usize)>,
+}
+
+impl ProcInitInfo {
+    pub fn new(proc_name: &str) -> Self {
+        Self {
+            proc_name: CString::new(proc_name).unwrap_or(CString::new("").unwrap()),
+            args: Vec::new(),
+            envs: Vec::new(),
+            auxv: BTreeMap::new(),
+        }
+    }
 }
 
 impl Process {
@@ -55,6 +83,9 @@ impl Process {
             name: String::from(name),
             page_table,
             threads: Vec::new(),
+            init_info: ProcInitInfo::new(name),
+            brk_start: BRK_START_BASE_ADDR,
+            brk_end: BRK_START_BASE_ADDR + DEFAULT_BRK_SIZE,
             next_fd: AtomicUsize::new(3),
             files: BTreeMap::new(),
         }
@@ -74,6 +105,12 @@ impl Process {
         let binary = ProcessBinary::parse(elf_data);
         let mut page_table = unsafe { KERNEL_PAGE_TABLE.lock().deep_copy() };
         ProcessBinary::map_segments(&binary, &mut page_table);
+        let _ = MemoryManager::alloc_range(
+            VirtAddr::new(BRK_START_BASE_ADDR as u64),
+            DEFAULT_BRK_SIZE as u64,
+            MappingType::UserData.flags(),
+            &mut page_table,
+        );
 
         let process = Arc::new(RwLock::new(Self::new(name, page_table)));
         Thread::new_user_thread(Arc::downgrade(&process), binary.entry() as usize);
@@ -94,6 +131,96 @@ impl Process {
         PROCESSES.write().push(process.clone());
 
         process.read().id.0 as isize
+    }
+}
+
+impl ProcInitInfo {
+    /// 把程序初始化信息压入用户栈中
+    /// 这个函数会把参数、环境变量、auxv等信息压入用户栈中
+    ///
+    /// ## 返回值
+    ///
+    /// 返回值是一个元组，第一个元素是最终的用户栈顶地址，第二个元素是环境变量pointer数组的起始地址     
+    pub unsafe fn push_at(
+        &self,
+        ustack: &mut Context,
+        page_table: &mut OffsetPageTable<'static>,
+    ) -> Result<(usize, usize), SystemError> {
+        // 先把程序的名称压入栈中
+        self.push_str(ustack, &self.proc_name, page_table)?;
+
+        // 然后把环境变量压入栈中
+        let envps = self
+            .envs
+            .iter()
+            .map(|s| {
+                self.push_str(ustack, s, page_table)
+                    .expect("push_str failed");
+                ustack.rsp
+            })
+            .collect::<Vec<_>>();
+        // 然后把参数压入栈中
+        let argps = self
+            .args
+            .iter()
+            .map(|s| {
+                self.push_str(ustack, s, page_table)
+                    .expect("push_str failed");
+                ustack.rsp
+            })
+            .collect::<Vec<_>>();
+
+        // 压入auxv
+        self.push_slice(
+            ustack,
+            &[core::ptr::null::<u8>(), core::ptr::null::<u8>()],
+            page_table,
+        )?;
+        for (&k, &v) in self.auxv.iter() {
+            self.push_slice(ustack, &[k as usize, v], page_table)?;
+        }
+
+        // 把环境变量指针压入栈中
+        self.push_slice(ustack, &[core::ptr::null::<u8>()], page_table)?;
+        self.push_slice(ustack, envps.as_slice(), page_table)?;
+
+        // 把参数指针压入栈中
+        self.push_slice(ustack, &[core::ptr::null::<u8>()], page_table)?;
+        self.push_slice(ustack, argps.as_slice(), page_table)?;
+
+        let argv_ptr = ustack.rsp;
+
+        // 把argc压入栈中
+        self.push_slice(ustack, &[self.args.len()], page_table)?;
+
+        return Ok((ustack.rsp, argv_ptr));
+    }
+
+    fn push_slice<T: Copy>(
+        &self,
+        ustack: &mut Context,
+        slice: &[T],
+        page_table: &mut OffsetPageTable<'static>,
+    ) -> Result<(), SystemError> {
+        let mut sp = ustack.rsp;
+        sp -= core::mem::size_of_val(slice);
+        sp -= sp % core::mem::align_of::<T>();
+
+        page_table.write_to_mapped_address(slice, VirtAddr::new(sp as u64));
+        ustack.rsp = sp;
+
+        return Ok(());
+    }
+
+    fn push_str(
+        &self,
+        ustack: &mut Context,
+        s: &CString,
+        page_table: &mut OffsetPageTable<'static>,
+    ) -> Result<(), SystemError> {
+        let bytes = s.as_bytes_with_nul();
+        self.push_slice(ustack, bytes, page_table)?;
+        return Ok(());
     }
 }
 

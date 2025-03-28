@@ -28,7 +28,5 @@ unsafe extern "C" fn kmain() -> ! {
 
     aether_kernel::init();
 
-    log::info!("Aether OS init done");
-
     aether_kernel::hcf();
 }

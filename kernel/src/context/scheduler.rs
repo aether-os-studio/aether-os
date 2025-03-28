@@ -3,6 +3,7 @@ use alloc::sync::Weak;
 use core::sync::atomic::{AtomicBool, Ordering};
 use spin::{Lazy, Mutex};
 use x86_64::VirtAddr;
+use x86_64::registers::control::{Cr0, Cr0Flags};
 
 use super::context::Context;
 use super::thread::{Thread, WeakSharedThread};
@@ -14,6 +15,7 @@ pub static SCHEDULER: Lazy<Mutex<Scheduler>> = Lazy::new(|| Mutex::new(Scheduler
 
 pub fn init() {
     x86_64::instructions::interrupts::enable();
+
     SCHEDULER_INIT.store(true, Ordering::SeqCst);
     info!("Scheduler initialized, interrupts enabled!");
 }
@@ -69,6 +71,8 @@ impl Scheduler {
                 if !thread.sleeping {
                     self.ready_threads.push_back(weak.clone());
                 }
+                fpu_disable();
+                thread.fp_state.save();
                 thread.sleeping = false;
             }
         }
@@ -83,6 +87,22 @@ impl Scheduler {
         let kernel_address = next_thread.kernel_stack.end_address();
         CPUS.write().get_mut(lapic_id).set_ring0_rsp(kernel_address);
 
+        fpu_enable();
+        next_thread.fp_state.restore();
         next_thread.context.address()
     }
+}
+
+pub fn fpu_enable() {
+    let mut cr0 = Cr0::read();
+    cr0.remove(Cr0Flags::EMULATE_COPROCESSOR);
+    cr0.remove(Cr0Flags::TASK_SWITCHED);
+    unsafe { Cr0::write(cr0) };
+}
+
+pub fn fpu_disable() {
+    let mut cr0 = Cr0::read();
+    cr0.insert(Cr0Flags::EMULATE_COPROCESSOR);
+    cr0.insert(Cr0Flags::TASK_SWITCHED);
+    unsafe { Cr0::write(cr0) };
 }

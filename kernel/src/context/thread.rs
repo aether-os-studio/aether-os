@@ -4,10 +4,11 @@ use core::sync::atomic::{AtomicU64, Ordering};
 use spin::RwLock;
 
 use super::context::Context;
+use super::fpu::FpState;
 use super::process::{KERNEL_PROCESS, WeakSharedProcess};
 use super::scheduler::SCHEDULER;
 use super::stack::{KernelStack, UserStack};
-use crate::memory::{ExtendedPageTable, KERNEL_PAGE_TABLE};
+use crate::memory::{ExtendedPageTable, KERNEL_PAGE_TABLE, ref_page_table};
 use crate::pctable::gdt::Selectors;
 
 pub(super) type SharedThread = Arc<RwLock<Thread>>;
@@ -28,7 +29,9 @@ pub struct Thread {
     pub kernel_stack: KernelStack,
     pub context: Context,
     pub process: WeakSharedProcess,
+    pub fp_state: FpState,
     pub sleeping: bool,
+    pub clear_child_tid: usize,
 }
 
 impl Thread {
@@ -38,7 +41,9 @@ impl Thread {
             context: Context::default(),
             kernel_stack: KernelStack::default(),
             process,
+            fp_state: FpState::new(),
             sleeping: false,
+            clear_child_tid: 0,
         }
     }
 
@@ -78,6 +83,13 @@ impl Thread {
             Selectors::get_user_segments(),
         );
 
+        unsafe {
+            process.init_info.push_at(
+                &mut thread.context,
+                &mut ref_page_table(process.page_table.physical_address()),
+            )
+        }
+        .unwrap();
         let thread = Arc::new(RwLock::new(thread));
         process.threads.push(thread.clone());
 

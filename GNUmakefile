@@ -9,7 +9,7 @@ override USER_VARIABLE = $(if $(filter $(origin $(1)),default undefined),$(eval 
 $(call USER_VARIABLE,KARCH,x86_64)
 
 # Default user QEMU flags. These are appended to the QEMU command calls.
-$(call USER_VARIABLE,QEMUFLAGS,-m 4G -serial stdio -smp 4)
+$(call USER_VARIABLE,QEMUFLAGS,-m 4G -serial stdio -smp 4 -cpu max)
 
 $(call USER_VARIABLE,DEBUG,false)
 
@@ -25,26 +25,11 @@ endif
 
 override IMAGE_NAME := aether-$(KARCH)
 
-.PHONY: all
-all: $(IMAGE_NAME).iso
-
 .PHONY: all-hdd
 all-hdd: $(IMAGE_NAME).hdd
 
-.PHONY: run
-run: run-$(KARCH)
-
 .PHONY: run-hdd
 run-hdd: run-hdd-$(KARCH)
-
-.PHONY: run-x86_64
-run-x86_64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).iso
-	sudo qemu-system-$(KARCH) \
-		-M q35 \
-		-drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-code-$(KARCH).fd,readonly=on \
-		-drive if=pflash,unit=1,format=raw,file=ovmf/ovmf-vars-$(KARCH).fd \
-		-cdrom $(IMAGE_NAME).iso \
-		$(QEMUFLAGS)
 
 .PHONY: run-hdd-x86_64
 run-hdd-x86_64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NAME).hdd
@@ -55,14 +40,6 @@ run-hdd-x86_64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_NA
 		-device ahci,id=ahci \
 		-device ide-hd,drive=disk,bus=ahci.0 \
 		-drive if=none,format=raw,id=disk,file=$(IMAGE_NAME).hdd \
-		$(QEMUFLAGS)
-
-.PHONY: run-bios
-run-bios: $(IMAGE_NAME).iso
-	sudo qemu-system-$(KARCH) \
-		-M q35 \
-		-cdrom $(IMAGE_NAME).iso \
-		-boot d \
 		$(QEMUFLAGS)
 
 .PHONY: run-hdd-bios
@@ -89,27 +66,11 @@ limine/limine:
 kernel:
 	$(MAKE) -C kernel
 
-$(IMAGE_NAME).iso: limine/limine kernel
-	rm -rf iso_root
-	mkdir -p iso_root/boot
-	cp -v kernel/kernel iso_root/boot/
-	mkdir -p iso_root/boot/limine
-	cp -v limine.conf iso_root/boot/limine/
-	mkdir -p iso_root/EFI/BOOT
-ifeq ($(KARCH),x86_64)
-	cp -v limine/limine-bios.sys limine/limine-bios-cd.bin limine/limine-uefi-cd.bin iso_root/boot/limine/
-	cp -v limine/BOOTX64.EFI iso_root/EFI/BOOT/
-	cp -v limine/BOOTIA32.EFI iso_root/EFI/BOOT/
-	xorriso -as mkisofs -b boot/limine/limine-bios-cd.bin \
-		-no-emul-boot -boot-load-size 4 -boot-info-table \
-		--efi-boot boot/limine/limine-uefi-cd.bin \
-		-efi-boot-part --efi-boot-image --protective-msdos-label \
-		iso_root -o $(IMAGE_NAME).iso
-	./limine/limine bios-install $(IMAGE_NAME).iso
-endif
-	rm -rf iso_root
+.PHONY: init
+init:
+	$(MAKE) -C init
 
-$(IMAGE_NAME).hdd: limine/limine kernel
+$(IMAGE_NAME).hdd: limine/limine init kernel
 	rm -f $(IMAGE_NAME).hdd
 	dd if=/dev/zero bs=1M count=0 seek=64 of=$(IMAGE_NAME).hdd
 	sgdisk $(IMAGE_NAME).hdd -n 1:2048 -t 1:ef00
@@ -117,8 +78,9 @@ ifeq ($(KARCH),x86_64)
 	./limine/limine bios-install $(IMAGE_NAME).hdd
 endif
 	mformat -i $(IMAGE_NAME).hdd@@1M
-	mmd -i $(IMAGE_NAME).hdd@@1M ::/EFI ::/EFI/BOOT ::/boot ::/boot/limine
+	mmd -i $(IMAGE_NAME).hdd@@1M ::/EFI ::/EFI/BOOT ::/boot ::/boot/limine ::/usr ::/usr/bin
 	mcopy -i $(IMAGE_NAME).hdd@@1M kernel/kernel ::/boot
+	mcopy -i $(IMAGE_NAME).hdd@@1M target/x86_64-unknown-linux-musl/debug/init ::/usr/bin
 	mcopy -i $(IMAGE_NAME).hdd@@1M limine.conf ::/boot/limine
 ifeq ($(KARCH),x86_64)
 	mcopy -i $(IMAGE_NAME).hdd@@1M limine/limine-bios.sys ::/boot/limine

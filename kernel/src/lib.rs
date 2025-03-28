@@ -8,13 +8,17 @@
 
 use core::sync::atomic::Ordering;
 
-use apic::{APIC_INIT, LAPIC, LAPIC_TIMER_INITIAL};
-use context::scheduler::SCHEDULER_INIT;
+use alloc::string::ToString;
+use apic::{APIC_INIT, LAPIC, LAPIC_TIMER_INITIAL, hpet::HPET};
+use context::{process::Process, scheduler::SCHEDULER_INIT, thread::Thread};
+use fs::vfs::get_inode_by_path;
+use kdevice::term::terminal_thread;
 use limine::mp::Cpu;
 use pctable::idt::IDT;
 use smp::{BSP_LAPIC_ID, CPUS};
 use x86_64::registers::control::{Cr0, Cr0Flags, Cr4, Cr4Flags};
 
+#[macro_use]
 extern crate alloc;
 
 #[macro_use]
@@ -33,7 +37,8 @@ pub mod syscall;
 
 mod unwind;
 
-pub fn init_sse() {
+pub fn init_cpu() {
+    // Enable SSE
     let mut cr0 = Cr0::read();
     cr0.remove(Cr0Flags::EMULATE_COPROCESSOR);
     cr0.insert(Cr0Flags::MONITOR_COPROCESSOR);
@@ -43,10 +48,15 @@ pub fn init_sse() {
     cr4.insert(Cr4Flags::OSFXSR);
     cr4.insert(Cr4Flags::OSXMMEXCPT_ENABLE);
     unsafe { Cr4::write(cr4) };
+
+    // Enable FSGSBASE
+    let mut cr4 = Cr4::read();
+    cr4.insert(Cr4Flags::FSGSBASE);
+    unsafe { Cr4::write(cr4) };
 }
 
 pub fn init() {
-    init_sse();
+    init_cpu();
 
     memory::init_heap();
 
@@ -67,10 +77,18 @@ pub fn init() {
     driver::init();
 
     fs::init();
+
+    info!("Boot time: {:?}", HPET.elapsed());
+    Thread::new_kernel_thread(terminal_thread);
+
+    let init_inode = get_inode_by_path("/usr/bin/init".to_string()).unwrap();
+    let buffer = vec![0u8; init_inode.read().size()].leak();
+    init_inode.read().read_at(0, buffer).unwrap();
+    Process::create("init", buffer);
 }
 
 unsafe extern "C" fn ap_entry(smp_info: &Cpu) -> ! {
-    init_sse();
+    init_cpu();
 
     CPUS.write().load(smp_info.lapic_id);
     IDT.load();

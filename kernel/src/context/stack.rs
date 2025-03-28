@@ -6,13 +6,13 @@ use crate::memory::{MappingType, MemoryManager};
 
 const KERNEL_STACK_SIZE: usize = 64 * 1024;
 const USER_STACK_END: usize = 0x7fffffff0000;
-const USER_STACK_SIZE: usize = 256 * 1024;
+const USER_STACK_SIZE: usize = 512 * 1024;
 
 pub struct KernelStack(Box<[u8]>);
 
 impl Default for KernelStack {
     fn default() -> Self {
-        Self(Box::from(alloc::vec![0; KERNEL_STACK_SIZE]))
+        Self(Box::from(vec![0; KERNEL_STACK_SIZE]))
     }
 }
 

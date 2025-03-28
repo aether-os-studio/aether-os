@@ -5,16 +5,17 @@ use x86_64::VirtAddr;
 use x86_64::registers::model_specific::{Efer, EferFlags};
 use x86_64::registers::model_specific::{LStar, SFMask, Star};
 use x86_64::registers::rflags::RFlags;
-use x86_64::structures::paging::Translate;
 use x86_64::structures::tss::TaskStateSegment;
 
 use crate::apic::LAPIC;
 use crate::context::context::Context;
 use crate::context::scheduler::SCHEDULER;
-use crate::memory::ref_current_page_table;
+use crate::context::{get_current_process, get_current_process_id, get_current_thread};
 use crate::pctable::gdt::Selectors;
 use crate::pctable::idt::InterruptIndex;
 use crate::smp::CPUS;
+
+mod fs;
 
 pub fn init() {
     SFMask::write(RFlags::INTERRUPT_FLAG);
@@ -35,7 +36,8 @@ extern "C" fn syscall_handler() {
         core::arch::naked_asm!(
             "sub rsp, 0x28",
             crate::push_context!(),
-            "mov rdi, rsp",
+            "mov rdi, rax",
+            "mov rsi, rsp",
             "call {syscall_matcher}",
             "mov rsp, rax",
             crate::pop_context!(),
@@ -46,8 +48,13 @@ extern "C" fn syscall_handler() {
     }
 }
 
+pub const ARCH_SET_GS: usize = 0x1001;
+pub const ARCH_SET_FS: usize = 0x1002;
+pub const ARCH_GET_FS: usize = 0x1003;
+pub const ARCH_GET_GS: usize = 0x1004;
+
 #[allow(unused_variables)]
-pub extern "C" fn syscall_matcher(context: &mut Context) -> VirtAddr {
+pub extern "C" fn syscall_matcher(syscall_index: usize, context: &mut Context) -> VirtAddr {
     context.rip = context.rcx;
     context.rflags = context.r11;
     context.rsp = (context as *mut Context).wrapping_add(1) as usize;
@@ -55,7 +62,6 @@ pub extern "C" fn syscall_matcher(context: &mut Context) -> VirtAddr {
     context.cs = code.0 as usize;
     context.ss = data.0 as usize;
 
-    let syscall_index: usize = context.rax;
     let arg1 = context.rdi;
     let arg2 = context.rsi;
     let arg3 = context.rdx;
@@ -63,21 +69,17 @@ pub extern "C" fn syscall_matcher(context: &mut Context) -> VirtAddr {
     let arg5 = context.r8;
     let arg6 = context.r9;
 
+    debug!(
+        "{}: {:#x}, {:#x}, {:#x}, {:#x}, {:#x}, {:#x}",
+        syscall_index, arg1, arg2, arg3, arg4, arg5, arg6
+    );
+
     let result = match syscall_index {
-        SYS_PUTSTRING => {
-            let str =
-                str::from_utf8(unsafe { core::slice::from_raw_parts(arg1 as *const u8, arg2) });
-            if let Ok(str) = str {
-                debug!("{}", str);
-                context.rax = 0;
-                return context.address();
-            }
-            SystemError::ENOENT.to_posix_errno() as isize
-        }
-        SYS_FORK => do_fork(context, false),
-        SYS_VFORK => do_fork(context, true),
-        SYS_EXIT => sys_exit(arg1),
-        SYS_IOPL => {
+        FORK => do_fork(context, false),
+        VFORK => do_fork(context, true),
+        EXIT => sys_exit(arg1),
+        EXIT_GROUP => sys_exit(0),
+        IOPL => {
             let allowed = arg1 >= 3;
 
             let offset = if allowed {
@@ -92,33 +94,52 @@ pub extern "C" fn syscall_matcher(context: &mut Context) -> VirtAddr {
 
             0
         }
-        SYS_VIRTTOPHYS => {
-            let vaddr = arg1;
-            if let Some(paddr) =
-                ref_current_page_table().translate_addr(VirtAddr::new(vaddr as u64))
-            {
-                context.rax = paddr.as_u64() as usize;
-                return context.address();
-            }
-
-            SystemError::ENOENT.to_posix_errno() as isize
-        }
-        SYS_OPEN => {
+        BRK => sys_brk(arg1),
+        MMAP => 0,
+        MUNMAP => 0,
+        OPEN => {
             let buf = unsafe { core::slice::from_raw_parts(arg1 as *const u8, arg2) };
             let str = str::from_utf8(buf).unwrap();
 
             fs::sys_open(str)
         }
-        SYS_READ => {
+        READ => {
             let buf = unsafe { core::slice::from_raw_parts_mut(arg2 as *mut u8, arg3) };
 
             fs::sys_read(arg1, buf)
         }
-        SYS_WRITE => {
+        WRITE => {
             let buf = unsafe { core::slice::from_raw_parts(arg2 as *const u8, arg3) };
 
             fs::sys_write(arg1, buf)
         }
+        CLOSE => {
+            let fd = arg1;
+            fs::sys_close(fd)
+        }
+        ARCH_PRCTL => match arg1 {
+            ARCH_GET_FS => get_current_thread().read().context.fsbase as isize,
+            ARCH_GET_GS => get_current_thread().read().context.gsbase as isize,
+            ARCH_SET_FS => {
+                get_current_thread().write().context.fsbase = arg2;
+                context.fsbase = arg2;
+                0
+            }
+            ARCH_SET_GS => {
+                get_current_thread().write().context.gsbase = arg2;
+                context.gsbase = arg2;
+                0
+            }
+            _ => SystemError::EINVAL.to_posix_errno() as isize,
+        },
+        GETPID => get_current_process_id().0 as isize,
+        SET_TID_ADDRESS => {
+            get_current_thread().write().clear_child_tid = arg1;
+            get_current_process_id().0 as isize
+        }
+        POLL => 0,
+        RT_SIGACTION => 0,
+        RT_SIGPROCMASK => 0,
         _ => SystemError::ENOSYS.to_posix_errno() as isize,
     };
 
@@ -150,6 +171,26 @@ pub fn sys_yield() -> isize {
     0
 }
 
+pub fn sys_brk(addr: usize) -> isize {
+    let mut new_brk = (addr + 4095) & !0xFFFusize;
+
+    if addr == 0 {
+        return get_current_process().read().brk_start as isize;
+    }
+    if new_brk < get_current_process().read().brk_end {
+        return 0;
+    }
+
+    new_brk = crate::memory::do_brk(
+        get_current_process().read().brk_end,
+        new_brk - get_current_process().read().brk_end,
+    );
+
+    get_current_process().write().brk_end = new_brk;
+
+    return new_brk as isize;
+}
+
 pub fn sys_exit(_code: usize) -> isize {
     let task = SCHEDULER.lock().current();
 
@@ -163,5 +204,3 @@ pub fn sys_exit(_code: usize) -> isize {
 
     SystemError::ESRCH.to_posix_errno() as isize
 }
-
-mod fs;

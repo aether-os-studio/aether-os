@@ -56,3 +56,14 @@ pub fn ref_page_table(page_table_addr: PhysAddr) -> OffsetPageTable<'static> {
     let physical_memory_offset = VirtAddr::new(*PHYSICAL_MEMORY_OFFSET);
     unsafe { OffsetPageTable::new(&mut *page_table, physical_memory_offset) }
 }
+
+pub fn do_brk(addr: usize, len: usize) -> usize {
+    let _ = MemoryManager::alloc_range(
+        VirtAddr::new(addr as u64),
+        len as u64,
+        MappingType::UserData.flags(),
+        &mut ref_current_page_table(),
+    );
+
+    addr + len
+}

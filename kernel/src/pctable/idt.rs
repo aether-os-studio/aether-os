@@ -1,5 +1,6 @@
 use spin::Lazy;
 use x86_64::VirtAddr;
+use x86_64::instructions::port::PortReadOnly;
 use x86_64::registers::control::Cr2;
 use x86_64::structures::idt::InterruptDescriptorTable;
 use x86_64::structures::idt::InterruptStackFrame;
@@ -33,6 +34,7 @@ impl StackTrace {
 
 use crate::context::scheduler::SCHEDULER;
 use crate::context::timer::TIMER;
+use crate::kdevice::term::SCANCODE_QUEUE;
 
 use super::gdt::DOUBLE_FAULT_IST_INDEX;
 
@@ -59,6 +61,8 @@ pub static IDT: Lazy<InterruptDescriptorTable> = Lazy::new(|| {
     }
 
     idt.breakpoint.set_handler_fn(breakpoint);
+    idt.device_not_available
+        .set_handler_fn(device_not_available);
     idt.segment_not_present.set_handler_fn(segment_not_present);
     idt.invalid_opcode.set_handler_fn(invalid_opcode);
     idt.page_fault.set_handler_fn(page_fault);
@@ -110,6 +114,10 @@ extern "x86-interrupt" fn hpet_timer_interrupt(_frame: InterruptStackFrame) {
     TIMER.lock().wakeup();
 }
 
+extern "x86-interrupt" fn device_not_available(_frame: InterruptStackFrame) {
+    crate::context::scheduler::fpu_enable();
+}
+
 extern "x86-interrupt" fn segment_not_present(frame: InterruptStackFrame, error_code: u64) {
     error!("Exception: Segment Not Present\n{:#?}", frame);
     error!("Error Code: {:#x}", error_code);
@@ -139,10 +147,14 @@ extern "x86-interrupt" fn double_fault(frame: InterruptStackFrame, error_code: u
 
 extern "x86-interrupt" fn keyboard_interrupt(_frame: InterruptStackFrame) {
     crate::apic::end_of_interrupt();
+    let scancode = unsafe { PortReadOnly::new(0x60).read() };
+    SCANCODE_QUEUE.force_push(scancode);
 }
 
 extern "x86-interrupt" fn mouse_interrupt(_frame: InterruptStackFrame) {
     crate::apic::end_of_interrupt();
+    let packet = unsafe { PortReadOnly::new(0x60).read() };
+    crate::kdevice::mouse::MOUSE.lock().process_packet(packet);
 }
 
 extern "x86-interrupt" fn page_fault(frame: InterruptStackFrame, error_code: PageFaultErrorCode) {

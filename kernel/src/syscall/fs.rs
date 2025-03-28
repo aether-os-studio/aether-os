@@ -64,3 +64,10 @@ pub fn sys_write(fd: usize, data: &[u8]) -> isize {
         }
     }
 }
+
+pub fn sys_close(fd: usize) -> isize {
+    if let Some(_) = get_current_process().write().files.remove(&fd) {
+        return 0;
+    }
+    SystemError::EBADFD.to_posix_errno() as isize
+}

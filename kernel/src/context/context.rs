@@ -6,6 +6,10 @@ use x86_64::{PhysAddr, VirtAddr};
 #[allow(dead_code)]
 pub struct Context {
     pub cr3: usize,
+
+    pub gsbase: usize,
+    pub fsbase: usize,
+
     pub r15: usize,
     pub r14: usize,
     pub r13: usize,
@@ -83,6 +87,10 @@ macro_rules! push_context {
             push r13
             push r14
             push r15
+            rdfsbase r15
+            push r15
+            rdgsbase r15
+            push r15
             mov r15, cr3
             push r15
             "#,
@@ -97,6 +105,10 @@ macro_rules! pop_context {
             r#"
             pop r15
             mov cr3, r15
+            pop r15
+            wrgsbase r15
+            pop r15
+            wrfsbase r15
             pop r15
             pop r14
             pop r13

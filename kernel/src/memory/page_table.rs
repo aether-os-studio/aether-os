@@ -12,7 +12,7 @@ use super::{convert_physical_to_virtual, convert_virtual_to_physical};
 
 pub trait ExtendedPageTable {
     fn physical_address(&self) -> PhysAddr;
-    fn write_to_mapped_address(&self, buffer: &[u8], address: VirtAddr);
+    fn write_to_mapped_address<T: Copy>(&self, buffer: &[T], address: VirtAddr);
     unsafe fn deep_copy(&self) -> OffsetPageTable<'static>;
     unsafe fn free_user_page_table(&mut self);
 }
@@ -23,14 +23,14 @@ impl ExtendedPageTable for OffsetPageTable<'_> {
         convert_virtual_to_physical(VirtAddr::new(virtual_address as u64))
     }
 
-    fn write_to_mapped_address(&self, buffer: &[u8], address: VirtAddr) {
+    fn write_to_mapped_address<T: Copy>(&self, buffer: &[T], address: VirtAddr) {
         for (offset, &byte) in buffer.iter().enumerate() {
-            let address = address + offset as u64;
+            let address = address + offset as u64 * size_of::<T>() as u64;
             let physical_address = self
                 .translate_addr(address)
                 .expect("Failed to translate address!");
             let virtual_address = convert_physical_to_virtual(physical_address).as_u64();
-            unsafe { (virtual_address as *mut u8).write(byte) }
+            unsafe { (virtual_address as *mut T).write(byte) }
         }
     }
 

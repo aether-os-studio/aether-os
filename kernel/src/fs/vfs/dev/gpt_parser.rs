@@ -9,7 +9,7 @@ use crate::fs::{
     },
 };
 
-use alloc::{format, sync::Arc, vec::Vec};
+use alloc::{sync::Arc, vec::Vec};
 use gpt_disk_io::{
     BlockIo, Disk, DiskError,
     gpt_disk_types::{BlockSize, GptPartitionEntryArrayLayout, GptPartitionEntrySize, Lba},

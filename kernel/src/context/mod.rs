@@ -1,4 +1,5 @@
 pub mod context;
+pub mod fpu;
 pub mod process;
 pub mod scheduler;
 pub mod stack;
@@ -9,7 +10,9 @@ use process::{ProcessId, SharedProcess};
 use scheduler::SCHEDULER;
 use thread::SharedThread;
 
-pub use self::scheduler::init;
+pub fn init() {
+    scheduler::init();
+}
 
 #[inline]
 pub fn get_current_thread() -> SharedThread {

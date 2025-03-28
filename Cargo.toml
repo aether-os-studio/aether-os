@@ -1,4 +1,4 @@
 [workspace]
 default-members = ["kernel"]
-members = ["asc", "kernel/crate/*", "kernel"]
+members = ["asc", "kernel/crate/*", "kernel", "init"]
 resolver = "2"
