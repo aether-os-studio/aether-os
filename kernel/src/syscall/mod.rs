@@ -15,7 +15,7 @@ use crate::pctable::gdt::Selectors;
 use crate::pctable::idt::InterruptIndex;
 use crate::smp::CPUS;
 
-mod fs;
+pub mod fs;
 
 pub fn init() {
     SFMask::write(RFlags::INTERRUPT_FLAG);
@@ -69,10 +69,10 @@ pub extern "C" fn syscall_matcher(syscall_index: usize, context: &mut Context) -
     let arg5 = context.r8;
     let arg6 = context.r9;
 
-    debug!(
-        "{}: {:#x}, {:#x}, {:#x}, {:#x}, {:#x}, {:#x}",
-        syscall_index, arg1, arg2, arg3, arg4, arg5, arg6
-    );
+    // debug!(
+    //     "{}: {:#x}, {:#x}, {:#x}, {:#x}, {:#x}, {:#x}",
+    //     syscall_index, arg1, arg2, arg3, arg4, arg5, arg6
+    // );
 
     let result = match syscall_index {
         FORK => do_fork(context, false),
@@ -164,6 +164,8 @@ pub fn do_fork(context: &mut Context, vfork: bool) -> isize {
 }
 
 pub fn sys_yield() -> isize {
+    x86_64::instructions::interrupts::enable_and_hlt();
+
     unsafe {
         core::arch::asm!("int {}", const InterruptIndex::Timer as u8);
     }

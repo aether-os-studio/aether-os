@@ -33,12 +33,14 @@ dependencies = [
  "error",
  "fatfs",
  "good_memory_allocator",
+ "goto",
  "gpt_disk_io",
  "humansize",
  "limine",
  "log",
  "object",
  "os-terminal",
+ "pc-keyboard",
  "pci_types",
  "rustc-demangle",
  "spin",
@@ -326,6 +328,12 @@ dependencies = [
  "either",
  "spin",
 ]
+
+[[package]]
+name = "goto"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4a1f4dc1af249b28a85cbb69b39a4fe02dd04498a3addec86d0ef3b6b08132e"
 
 [[package]]
 name = "gpt_disk_io"

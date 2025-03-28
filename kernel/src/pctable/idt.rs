@@ -35,6 +35,7 @@ impl StackTrace {
 use crate::context::scheduler::SCHEDULER;
 use crate::context::timer::TIMER;
 use crate::kdevice::term::SCANCODE_QUEUE;
+use crate::pctable::gdt::Selectors;
 
 use super::gdt::DOUBLE_FAULT_IST_INDEX;
 
@@ -125,6 +126,33 @@ extern "x86-interrupt" fn segment_not_present(frame: InterruptStackFrame, error_
 }
 
 extern "x86-interrupt" fn general_protection_fault(frame: InterruptStackFrame, error_code: u64) {
+    if frame.stack_pointer.as_u64() <= 0x7fffffff0000 {
+        let ip = frame.instruction_pointer.as_u64() as usize;
+        let instruction = unsafe { (ip as *const u8).read() };
+
+        if instruction == 0xF4 {
+            x86_64::instructions::interrupts::enable_and_hlt();
+
+            let (code, data) = Selectors::get_user_segments();
+
+            unsafe {
+                core::arch::asm!(
+                    "push {0:r}",
+                    "push {1:r}",
+                    "push {2:r}",
+                    "push {3:r}",
+                    "push {4:r}",
+                    "iretq",
+                    in(reg) data.0 as usize,
+                    in(reg) frame.stack_pointer.as_u64() as usize,
+                    in(reg) frame.cpu_flags.bits() as usize,
+                    in(reg) code.0 as usize,
+                    in(reg) (ip + 1),
+                );
+            }
+        }
+    }
+
     error!("Exception: General Protection Fault\n{:#?}", frame);
     error!("Error Code: {:#x}", error_code);
     x86_64::instructions::hlt();

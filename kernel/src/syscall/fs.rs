@@ -1,5 +1,8 @@
 use alloc::string::ToString;
+use crossbeam_queue::ArrayQueue;
 use error::SystemError;
+use goto::gpoint;
+use spin::Lazy;
 
 use crate::{context::get_current_process, fs::vfs::get_inode_by_path};
 
@@ -24,9 +27,31 @@ pub fn sys_open(path: &str) -> isize {
     return 0;
 }
 
+const KEYCODE_QUEUE_SIZE: usize = 128;
+
+pub static KEYCODE_QUEUE: Lazy<ArrayQueue<u8>> = Lazy::new(|| ArrayQueue::new(KEYCODE_QUEUE_SIZE));
+
 pub fn sys_read(fd: usize, data: &mut [u8]) -> isize {
     match fd {
-        0 => 0,
+        0 => {
+            let mut write = 0;
+
+            gpoint!('try_read:
+            while let Some(byte) = KEYCODE_QUEUE.pop() {
+                if write >= data.len() {
+                    break;
+                }
+                data[write] = byte as u8;
+                write += 1;
+            }
+            if data.len() > write {
+                while let None = KEYCODE_QUEUE.pop() {
+                    crate::syscall::sys_yield();
+                }
+                break 'try_read;
+            });
+            write as isize
+        }
         1 | 2 => 0,
         _ => {
             if let Some((node, _, offset)) = get_current_process().read().files.get(&fd) {
@@ -47,8 +72,8 @@ pub fn sys_write(fd: usize, data: &[u8]) -> isize {
         0 => 0,
         1 | 2 => {
             let str = unsafe { str::from_utf8_unchecked(data) };
-            crate::serial_println!("{}", str);
-            crate::println!("{}", str);
+            crate::serial_print!("{}", str);
+            crate::print!("{}", str);
             str.len() as isize
         }
         _ => {

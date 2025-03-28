@@ -5,11 +5,13 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use crossbeam_queue::ArrayQueue;
 use os_terminal::font::BitmapFont;
 use os_terminal::{MouseInput, Terminal};
+use pc_keyboard::{DecodedKey, HandleControl, KeyCode, Keyboard, ScancodeSet1, layouts};
 use spin::Lazy;
 
 use super::writer::TerminalWriter;
 use crate::kdevice::display::Display;
 use crate::kdevice::mouse::{MOUSE_BUFFER, MouseEvent};
+use crate::syscall::fs::KEYCODE_QUEUE;
 use crate::syscall::sys_yield;
 
 const SCANCODE_QUEUE_SIZE: usize = 128;
@@ -33,9 +35,24 @@ fn terminal_flush(terminal: &mut Terminal<Display>) {
     }
 }
 
-fn terminal_event(terminal: &mut Terminal<Display>) {
+fn terminal_event(
+    terminal: &mut Terminal<Display>,
+    keyboard: &mut Keyboard<layouts::Us104Key, ScancodeSet1>,
+) {
     while let Some(scancode) = SCANCODE_QUEUE.pop() {
         terminal.handle_keyboard(scancode);
+        if let Ok(Some(key_event)) = keyboard.add_byte(scancode) {
+            if let Some(key) = keyboard.process_keyevent(key_event) {
+                match key {
+                    DecodedKey::RawKey(raw_key) => match raw_key {
+                        KeyCode::Backspace => KEYCODE_QUEUE.push(8).unwrap(),
+                        KeyCode::Oem7 => KEYCODE_QUEUE.push(b'\\').unwrap(),
+                        _ => {}
+                    },
+                    DecodedKey::Unicode(ch) => KEYCODE_QUEUE.push(ch as u8).unwrap(),
+                }
+            }
+        }
         NEED_FLUSH.store(true, Ordering::Relaxed);
     }
 
@@ -54,8 +71,14 @@ pub fn terminal_thread() {
 
     terminal.set_pty_writer(Box::new(|s: String| TerminalWriter.write_str(&s).unwrap()));
 
+    let mut keyboard = Keyboard::new(
+        ScancodeSet1::new(),
+        layouts::Us104Key,
+        HandleControl::Ignore,
+    );
+
     loop {
-        terminal_event(&mut terminal);
+        terminal_event(&mut terminal, &mut keyboard);
         terminal_flush(&mut terminal);
         sys_yield();
     }
