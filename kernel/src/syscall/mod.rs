@@ -1,6 +1,7 @@
 use alloc::sync::Arc;
 use asc::nr::*;
 use error::SystemError;
+use num_traits::FromPrimitive;
 use x86_64::VirtAddr;
 use x86_64::registers::model_specific::{Efer, EferFlags};
 use x86_64::registers::model_specific::{LStar, SFMask, Star};
@@ -11,6 +12,7 @@ use crate::apic::LAPIC;
 use crate::context::context::Context;
 use crate::context::scheduler::SCHEDULER;
 use crate::context::{get_current_process, get_current_process_id, get_current_thread};
+use crate::fs::vfs::fcntl::FcntlCommand;
 use crate::pctable::gdt::Selectors;
 use crate::pctable::idt::InterruptIndex;
 use crate::smp::CPUS;
@@ -116,6 +118,24 @@ pub extern "C" fn syscall_matcher(syscall_index: usize, context: &mut Context) -
         CLOSE => {
             let fd = arg1;
             fs::sys_close(fd)
+        }
+        FCNTL => {
+            let fd = arg1;
+            let cmd = <FcntlCommand as FromPrimitive>::from_usize(arg2);
+            let arg = arg3;
+            if let Some(cmd) = cmd {
+                fs::sys_fcntl(fd, cmd, arg);
+            }
+
+            SystemError::EINVAL.to_posix_errno() as isize
+        }
+        GETCWD => {
+            let buf = arg1 as *mut u8;
+            let size = arg2;
+
+            let buf = unsafe { core::slice::from_raw_parts_mut(buf, size) };
+
+            fs::sys_getcwd(buf)
         }
         ARCH_PRCTL => match arg1 {
             ARCH_GET_FS => get_current_thread().read().context.fsbase as isize,

@@ -13,6 +13,7 @@ use super::fat::Fat32Volume;
 pub mod cache;
 pub mod dev;
 pub mod fake;
+pub mod fcntl;
 pub mod inode;
 
 pub static ROOT: Lazy<Mutex<InodeRef>> = Lazy::new(|| Mutex::new(FakeFS::new()));

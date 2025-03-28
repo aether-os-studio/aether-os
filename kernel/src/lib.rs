@@ -24,6 +24,9 @@ extern crate alloc;
 #[macro_use]
 extern crate log;
 
+#[macro_use]
+extern crate num_derive;
+
 pub mod acpi;
 pub mod apic;
 pub mod context;
@@ -84,7 +87,7 @@ pub fn init() {
     let init_inode = get_inode_by_path("/usr/bin/init".to_string()).unwrap();
     let buffer = vec![0u8; init_inode.read().size()].leak();
     init_inode.read().read_at(0, buffer).unwrap();
-    Process::create("init", buffer);
+    Process::create(&init_inode.read().get_path(), buffer);
 }
 
 unsafe extern "C" fn ap_entry(smp_info: &Cpu) -> ! {

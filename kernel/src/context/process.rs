@@ -13,7 +13,8 @@ use x86_64::structures::paging::OffsetPageTable;
 
 use super::context::Context;
 use super::thread::{SharedThread, Thread};
-use crate::fs::vfs::inode::InodeRef;
+use crate::fs::vfs::ROOT;
+use crate::fs::vfs::inode::{FileMode, InodeRef};
 use crate::memory::{ExtendedPageTable, ref_current_page_table, ref_page_table};
 use crate::memory::{FRAME_ALLOCATOR, KERNEL_PAGE_TABLE};
 use crate::memory::{MappingType, MemoryManager};
@@ -62,7 +63,8 @@ pub struct Process {
     pub brk_start: usize,
     pub brk_end: usize,
     pub next_fd: AtomicUsize,
-    pub files: BTreeMap<usize, (InodeRef, bool, usize)>,
+    pub files: BTreeMap<usize, (InodeRef, FileMode, usize)>,
+    pub cwd: InodeRef,
 }
 
 impl ProcInitInfo {
@@ -88,6 +90,7 @@ impl Process {
             brk_end: BRK_START_BASE_ADDR + DEFAULT_BRK_SIZE,
             next_fd: AtomicUsize::new(3),
             files: BTreeMap::new(),
+            cwd: ROOT.lock().clone(),
         }
     }
 

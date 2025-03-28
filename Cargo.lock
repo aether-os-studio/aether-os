@@ -38,6 +38,8 @@ dependencies = [
  "humansize",
  "limine",
  "log",
+ "num-derive 0.4.2",
+ "num-traits 0.2.19",
  "object",
  "os-terminal",
  "pc-keyboard",
@@ -295,7 +297,7 @@ dependencies = [
 name = "error"
 version = "0.1.0"
 dependencies = [
- "num-derive",
+ "num-derive 0.3.3",
  "num-traits 0.2.15",
 ]
 
@@ -478,6 +480,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "num-derive"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed3955f1a9c7c0c15e092f9c887db08b1fc683305fdf6eb6684f22555355e202"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.100",
 ]
 
 [[package]]
@@ -993,7 +1006,7 @@ checksum = "09f3f0483969259f2adb6524054400d94ac352e59fa37da6c6ca3b9b3d83ff83"
 dependencies = [
  "accessor",
  "bit_field",
- "num-derive",
+ "num-derive 0.3.3",
  "num-traits 0.2.19",
  "paste",
 ]

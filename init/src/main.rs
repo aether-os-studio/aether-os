@@ -18,7 +18,7 @@ fn parse() -> ! {
 }
 
 fn main() {
-    println!("Hello, world!");
+    println!("init process is running, pid = {}", std::process::id());
 
     parse()
 }
