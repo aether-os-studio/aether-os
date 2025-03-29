@@ -4,3 +4,4 @@ name = "init"
 version = "0.1.0"
 
 [dependencies]
+libc = "0.2.171"

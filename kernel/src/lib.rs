@@ -37,6 +37,7 @@ pub mod memory;
 pub mod pctable;
 pub mod smp;
 pub mod syscall;
+pub mod time;
 
 mod unwind;
 

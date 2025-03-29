@@ -1,6 +1,10 @@
+use core::ffi::CStr;
+use core::isize;
+
 use alloc::sync::Arc;
 use asc::nr::*;
 use error::SystemError;
+use fs::PosixKstat;
 use num_traits::FromPrimitive;
 use x86_64::VirtAddr;
 use x86_64::registers::model_specific::{Efer, EferFlags};
@@ -17,6 +21,7 @@ use crate::pctable::gdt::Selectors;
 use crate::pctable::idt::InterruptIndex;
 use crate::smp::CPUS;
 
+pub mod debug;
 pub mod fs;
 
 pub fn init() {
@@ -71,10 +76,10 @@ pub extern "C" fn syscall_matcher(syscall_index: usize, context: &mut Context) -
     let arg5 = context.r8;
     let arg6 = context.r9;
 
-    // debug!(
-    //     "{}: {:#x}, {:#x}, {:#x}, {:#x}, {:#x}, {:#x}",
-    //     syscall_index, arg1, arg2, arg3, arg4, arg5, arg6
-    // );
+    debug!(
+        "{}",
+        debug::format_call(syscall_index, arg1, arg2, arg3, arg4, arg5)
+    );
 
     let result = match syscall_index {
         FORK => do_fork(context, false),
@@ -100,10 +105,9 @@ pub extern "C" fn syscall_matcher(syscall_index: usize, context: &mut Context) -
         MMAP => 0,
         MUNMAP => 0,
         OPEN => {
-            let buf = unsafe { core::slice::from_raw_parts(arg1 as *const u8, arg2) };
-            let str = str::from_utf8(buf).unwrap();
+            let cstr = unsafe { CStr::from_ptr(arg1 as *const i8) };
 
-            fs::sys_open(str)
+            fs::sys_open(cstr.to_str().unwrap())
         }
         READ => {
             let buf = unsafe { core::slice::from_raw_parts_mut(arg2 as *mut u8, arg3) };
@@ -119,6 +123,7 @@ pub extern "C" fn syscall_matcher(syscall_index: usize, context: &mut Context) -
             let fd = arg1;
             fs::sys_close(fd)
         }
+        LSEEK => fs::sys_lseek(arg1, arg2, arg3),
         FCNTL => {
             let fd = arg1;
             let cmd = <FcntlCommand as FromPrimitive>::from_usize(arg2);
@@ -128,6 +133,20 @@ pub extern "C" fn syscall_matcher(syscall_index: usize, context: &mut Context) -
             }
 
             SystemError::EINVAL.to_posix_errno() as isize
+        }
+        FSTAT => {
+            let fd = arg1;
+            let buffer_ptr = arg2;
+            let kstat = fs::do_fstat(fd);
+            if let Err(err) = kstat {
+                let err = err.to_posix_errno() as usize;
+                context.rax = err;
+                return context.address();
+            }
+
+            unsafe { *(buffer_ptr as *mut PosixKstat) = kstat.unwrap() };
+
+            0
         }
         GETCWD => {
             let buf = arg1 as *mut u8;

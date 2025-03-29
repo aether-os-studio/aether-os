@@ -1,23 +1,27 @@
 use alloc::collections::btree_map::BTreeMap;
 use alloc::ffi::CString;
-use alloc::string::String;
+use alloc::string::{String, ToString};
 use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
 use core::fmt::Debug;
 use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use elf::endian::AnyEndian;
+use elf::file::FileHeader;
 use error::SystemError;
-use object::{File, Object, ObjectSegment};
 use spin::{Lazy, RwLock};
 use x86_64::VirtAddr;
-use x86_64::structures::paging::OffsetPageTable;
+use x86_64::structures::paging::{OffsetPageTable, PageSize, Size4KiB};
 
+use super::abi::AtType;
 use super::context::Context;
 use super::thread::{SharedThread, Thread};
 use crate::fs::vfs::ROOT;
 use crate::fs::vfs::inode::{FileMode, InodeRef};
+// use crate::memory::FRAME_ALLOCATOR;
+use crate::memory::KERNEL_PAGE_TABLE;
 use crate::memory::{ExtendedPageTable, ref_current_page_table, ref_page_table};
-use crate::memory::{FRAME_ALLOCATOR, KERNEL_PAGE_TABLE};
 use crate::memory::{MappingType, MemoryManager};
+use crate::syscall::fs::StdioInode;
 
 pub(super) type SharedProcess = Arc<RwLock<Process>>;
 pub(super) type WeakSharedProcess = Weak<RwLock<Process>>;
@@ -62,6 +66,8 @@ pub struct Process {
     pub init_info: ProcInitInfo,
     pub brk_start: usize,
     pub brk_end: usize,
+    pub load_start: usize,
+    pub load_end: usize,
     pub next_fd: AtomicUsize,
     pub files: BTreeMap<usize, (InodeRef, FileMode, usize)>,
     pub cwd: InodeRef,
@@ -69,18 +75,26 @@ pub struct Process {
 
 impl ProcInitInfo {
     pub fn new(proc_name: &str) -> Self {
-        Self {
+        let mut this = Self {
             proc_name: CString::new(proc_name).unwrap_or(CString::new("").unwrap()),
             args: Vec::new(),
             envs: Vec::new(),
             auxv: BTreeMap::new(),
-        }
+        };
+
+        let enable_backtrace = "RUST_BACKTRACE=1";
+        let enable_backtrace_cstring = unsafe {
+            CString::from_vec_unchecked(enable_backtrace.to_string().as_mut_vec().clone())
+        };
+        this.envs.insert(0, enable_backtrace_cstring);
+
+        this
     }
 }
 
 impl Process {
     pub fn new(name: &str, page_table: OffsetPageTable<'static>) -> Self {
-        Self {
+        let mut this = Self {
             id: ProcessId::new(),
             name: String::from(name),
             page_table,
@@ -88,10 +102,20 @@ impl Process {
             init_info: ProcInitInfo::new(name),
             brk_start: BRK_START_BASE_ADDR,
             brk_end: BRK_START_BASE_ADDR + DEFAULT_BRK_SIZE,
+            load_start: 0,
+            load_end: 0,
             next_fd: AtomicUsize::new(3),
             files: BTreeMap::new(),
             cwd: ROOT.lock().clone(),
-        }
+        };
+
+        let stdio = StdioInode::new();
+
+        this.files.insert(0, (stdio.clone(), FileMode::O_RDONLY, 0));
+        this.files.insert(1, (stdio.clone(), FileMode::O_WRONLY, 0));
+        this.files.insert(2, (stdio.clone(), FileMode::O_WRONLY, 0));
+
+        this
     }
 
     pub fn exit(&self) {
@@ -107,7 +131,8 @@ impl Process {
     pub fn create(name: &str, elf_data: &'static [u8]) {
         let binary = ProcessBinary::parse(elf_data);
         let mut page_table = unsafe { KERNEL_PAGE_TABLE.lock().deep_copy() };
-        ProcessBinary::map_segments(&binary, &mut page_table);
+        let (phdr_vaddr, load_min, load_max) =
+            ProcessBinary::map_segments(elf_data, &binary, &mut page_table);
         let _ = MemoryManager::alloc_range(
             VirtAddr::new(BRK_START_BASE_ADDR as u64),
             DEFAULT_BRK_SIZE as u64,
@@ -116,7 +141,11 @@ impl Process {
         );
 
         let process = Arc::new(RwLock::new(Self::new(name, page_table)));
-        Thread::new_user_thread(Arc::downgrade(&process), binary.entry() as usize);
+        process.write().load_start = load_min;
+        process.write().load_end = load_max;
+        process.write().init_proc(&binary, phdr_vaddr);
+
+        Thread::new_user_thread(Arc::downgrade(&process), binary.e_entry as usize);
         PROCESSES.write().push(process.clone());
     }
 
@@ -134,6 +163,24 @@ impl Process {
         PROCESSES.write().push(process.clone());
 
         process.read().id.0 as isize
+    }
+
+    fn init_proc(&mut self, ehdr: &FileHeader<AnyEndian>, phdr_vaddr: usize) {
+        self.init_info
+            .auxv
+            .insert(AtType::PhEnt as u8, ehdr.e_phentsize as usize);
+        self.init_info
+            .auxv
+            .insert(AtType::PageSize as u8, Size4KiB::SIZE as usize);
+        self.init_info
+            .auxv
+            .insert(AtType::Phdr as u8, phdr_vaddr as usize);
+        self.init_info
+            .auxv
+            .insert(AtType::PhNum as u8, ehdr.e_phnum as usize);
+        self.init_info
+            .auxv
+            .insert(AtType::Entry as u8, ehdr.e_entry as usize);
     }
 }
 
@@ -227,29 +274,96 @@ impl ProcInitInfo {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct OurElf64Phdr {
+    pub p_type: u32,
+    pub p_flags: u32,
+    pub p_offset: u64,
+    pub p_vaddr: u64,
+    pub p_paddr: u64,
+    pub p_filesz: u64,
+    pub p_memsz: u64,
+    pub p_align: u64,
+}
+
 struct ProcessBinary;
 
 impl ProcessBinary {
-    fn parse(bin: &'static [u8]) -> File<'static> {
-        File::parse(bin).expect("Failed to parse ELF binary!")
+    fn parse(bin: &'static [u8]) -> FileHeader<AnyEndian> {
+        let ident_buf = &bin[0..elf::abi::EI_NIDENT];
+        let ident = elf::file::parse_ident::<elf::endian::AnyEndian>(ident_buf).unwrap();
+
+        let tail_start = elf::abi::EI_NIDENT;
+        let tail_end = match ident.1 {
+            elf::file::Class::ELF32 => tail_start + elf::file::ELF32_EHDR_TAILSIZE,
+            elf::file::Class::ELF64 => tail_start + elf::file::ELF64_EHDR_TAILSIZE,
+        };
+
+        let tail_buf = &bin[tail_start..tail_end];
+
+        let ehdr = elf::file::FileHeader::parse_tail(ident, tail_buf).unwrap();
+
+        ehdr
     }
 
-    fn map_segments(elf_file: &File, page_table: &mut OffsetPageTable<'static>) {
-        for segment in elf_file.segments() {
-            let address = VirtAddr::new(segment.address());
+    fn map_segments(
+        bin: &'static [u8],
+        ehdr: &FileHeader<AnyEndian>,
+        page_table: &mut OffsetPageTable<'static>,
+    ) -> (usize, usize, usize) {
+        let mut phdr_vaddr: usize = 0;
 
-            MemoryManager::alloc_range(
-                address,
-                segment.size(),
-                MappingType::UserCode.flags(),
-                page_table,
-            )
-            .expect("Failed to allocate memory for ELF segment");
+        let mut min_addr: usize = 0xFFFFFFFFFFFFFFFF;
+        let mut max_addr: usize = 0x0000000000000000;
 
-            if let Ok(data) = segment.data() {
-                page_table.write_to_mapped_address(data, address);
+        for i in 0..ehdr.e_phnum {
+            let start = ehdr.e_phoff as usize + i as usize * ehdr.e_phentsize as usize;
+            let phdr = &bin[start..(start + (ehdr.e_phentsize as usize))];
+
+            let seg_to_load = unsafe { *(phdr.as_ptr() as *const OurElf64Phdr) };
+
+            if seg_to_load.p_type == elf::abi::PT_LOAD {
+                let vaddr = VirtAddr::new(seg_to_load.p_vaddr);
+
+                if seg_to_load.p_vaddr < min_addr as u64 {
+                    min_addr = seg_to_load.p_vaddr as usize;
+                }
+                let end = seg_to_load.p_vaddr + seg_to_load.p_memsz;
+                if end > max_addr as u64 {
+                    max_addr = end as usize;
+                }
+
+                let mapping_type = if (seg_to_load.p_flags & elf::abi::PF_X) != 0 {
+                    MappingType::UserCode
+                } else {
+                    MappingType::UserData
+                };
+
+                let _ = MemoryManager::alloc_range(
+                    vaddr,
+                    seg_to_load.p_memsz,
+                    mapping_type.flags(),
+                    page_table,
+                );
+
+                let offset_in_file = seg_to_load.p_offset as usize;
+                let filesz = seg_to_load.p_filesz as usize;
+
+                let buffer = &bin[offset_in_file as usize..(offset_in_file + filesz)];
+
+                page_table.write_to_mapped_address(buffer, vaddr);
+
+                if (seg_to_load.p_offset <= ehdr.e_phoff)
+                    && (ehdr.e_phoff < (seg_to_load.p_offset + seg_to_load.p_filesz))
+                {
+                    phdr_vaddr =
+                        (ehdr.e_phoff - seg_to_load.p_offset + seg_to_load.p_vaddr) as usize;
+                }
             }
         }
+
+        (phdr_vaddr, min_addr, max_addr)
     }
 }
 
@@ -257,8 +371,8 @@ impl Drop for Process {
     fn drop(&mut self) {
         unsafe {
             self.page_table.free_user_page_table();
-            info!("Process {} dropped", self.id.0);
-            info!("Memory usage: {}", FRAME_ALLOCATOR.lock());
+            // info!("Process {} dropped", self.id.0);
+            // info!("Memory usage: {}", FRAME_ALLOCATOR.lock());
         }
     }
 }
