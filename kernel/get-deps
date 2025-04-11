@@ -1,0 +1,41 @@
+#! /bin/sh
+
+set -ex
+
+srcdir="$(dirname "$0")"
+test -z "$srcdir" && srcdir=.
+
+cd "$srcdir"
+
+clone_repo_commit() {
+    if test -d "$2/.git"; then
+        git -C "$2" reset --hard
+        git -C "$2" clean -fd
+        if ! git -C "$2" checkout $3; then
+            rm -rf "$2"
+        fi
+    else
+        if test -d "$2"; then
+            set +x
+            echo "error: '$2' is not a Git repository"
+            exit 1
+        fi
+    fi
+    if ! test -d "$2"; then
+        git clone $1 "$2"
+        if ! git -C "$2" checkout $3; then
+            rm -rf "$2"
+            exit 1
+        fi
+    fi
+}
+
+clone_repo_commit \
+    https://codeberg.org/osdev/freestnd-c-hdrs-0bsd.git \
+    freestnd-c-hdrs \
+    a87c192f3eb66b0806740dc67325f9ad23fc2d0b
+
+clone_repo_commit \
+    https://codeberg.org/osdev/cc-runtime.git \
+    src/cc-runtime \
+    b4d3b970b2f6e7d08360c66eea8314e8dd901490
