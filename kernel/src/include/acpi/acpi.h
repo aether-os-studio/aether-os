@@ -234,3 +234,6 @@ uint64_t nanoTime();
 
 void apic_setup(MADT *madt);
 uint64_t lapic_id();
+
+void ioapic_enable(uint8_t vector);
+void ioapic_add(uint8_t vector, uint32_t irq);

@@ -34,6 +34,8 @@ void sse_init()
 #include <mm/page.h>
 #include <mm/heap.h>
 #include <acpi/acpi.h>
+#include <irq/gate.h>
+#include <irq/trap.h>
 
 void kmain(void)
 {
@@ -52,6 +54,7 @@ void kmain(void)
     heap_init();
 
     acpi_init();
+    irq_init();
 
     hcf();
 }

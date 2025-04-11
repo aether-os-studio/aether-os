@@ -8,6 +8,8 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+#include <irq/ptrace.h>
+
 #define ABS(x) ((x) > 0 ? (x) : -(x)) // 绝对值
 // 最大最小值
 #define max(x, y) ((x > y) ? (x) : (y))
