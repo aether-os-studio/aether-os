@@ -2,8 +2,14 @@
 MAKEFLAGS += -rR
 .SUFFIXES:
 
+DEBUG ?= 0
+
 # Default user QEMU flags. These are appended to the QEMU command calls.
-QEMUFLAGS := -m 2G -smp 4 -d cpu_reset
+QEMUFLAGS := -M q35 -m 2G -smp 4 -d cpu_reset
+
+ifeq ($(DEBUG), 1)
+QEMUFLAGS += -s -S
+endif
 
 override IMAGE_NAME := aether
 

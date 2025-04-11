@@ -64,6 +64,9 @@ void page_map_to(page_directory_t *directory, uint64_t addr, uint64_t frame, uin
 
 void page_map_range_to(page_directory_t *directory, uint64_t addr, uint64_t frame, uint64_t size, uint64_t flags)
 {
+    addr = addr & (~0xFFFUL);
+    frame = frame & (~0xFFFUL);
+
     uint64_t paddr = frame;
     for (uint64_t vaddr = addr; vaddr < addr + size; vaddr += PAGE_SIZE)
     {
@@ -71,10 +74,8 @@ void page_map_range_to(page_directory_t *directory, uint64_t addr, uint64_t fram
         {
             paddr = alloc_frames(1);
         }
-        else
-        {
-            paddr += PAGE_SIZE;
-        }
         page_map_to(directory, vaddr, paddr, flags);
+
+        paddr += PAGE_SIZE;
     }
 }

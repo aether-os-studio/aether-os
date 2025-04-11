@@ -1,6 +1,8 @@
 #ifndef __LIB_H__
 #define __LIB_H__
 
+#define LIMINE_API_REVISION 3
+
 #include <limine.h>
 #include <stdint.h>
 #include <stddef.h>
@@ -17,8 +19,6 @@ static inline uint64_t round(double x)
     return (uint64_t)(x + 0.5);
 }
 
-#define NULL 0
-
 #define container_of(ptr, type, member)                                     \
     ({                                                                      \
         typeof(((type *)0)->member) *p = (ptr);                             \
@@ -33,7 +33,7 @@ static inline uint64_t round(double x)
 #define hlt() __asm__ __volatile__("hlt	\n\t")
 #define pause() __asm__ __volatile__("pause	\n\t")
 
-static inline void *memcpy(void *From, void *To, long Num)
+static inline void *memcpy(void *To, void *From, long Num)
 {
     int d0, d1, d2;
     __asm__ __volatile__("cld	\n\t"

@@ -33,6 +33,7 @@ void sse_init()
 #include <mm/frame.h>
 #include <mm/page.h>
 #include <mm/heap.h>
+#include <acpi/acpi.h>
 
 void kmain(void)
 {
@@ -49,6 +50,8 @@ void kmain(void)
     frame_init();
     page_init();
     heap_init();
+
+    acpi_init();
 
     hcf();
 }
