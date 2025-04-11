@@ -163,7 +163,7 @@ void send_ipi(uint32_t apic_id, uint32_t command)
 
 void apic_setup(MADT *madt)
 {
-    lapic_address = (uint64_t)phys_to_virt(madt->local_apic_address);
+    lapic_address = phys_to_virt((uint64_t)madt->local_apic_address);
     page_map_range_to(get_kernel_page_dir(), lapic_address, madt->local_apic_address, PAGE_SIZE, KERNEL_PTE_FLAGS);
 
     uint64_t current = 0;

@@ -79,3 +79,42 @@ void page_map_range_to(page_directory_t *directory, uint64_t addr, uint64_t fram
         paddr += PAGE_SIZE;
     }
 }
+
+static bool is_huge_page(page_table_entry_t *entry)
+{
+    return (((uint64_t)entry->value) & PTE_HUGE) != 0;
+}
+
+void copy_page_table_recursive(page_table_t *source_table, page_table_t *new_table, int level)
+{
+    for (int i = 0; i < 512; i++)
+    {
+        page_table_entry_t *entry = phys_to_virt(&source_table->entries[i]);
+
+        if (level == 1 || entry->value == 0 || is_huge_page(entry))
+        {
+            phys_to_virt(new_table)->entries[i].value = entry->value;
+            continue;
+        }
+
+        uint64_t frame = alloc_frames(1);
+        page_table_t *new_page_table = (page_table_t *)frame;
+        phys_to_virt(new_table)->entries[i].value = frame | (entry->value & 0xFFF);
+
+        page_table_t *source_page_table_next = (page_table_t *)(entry->value & 0x00007fffffff000);
+        page_table_t *target_page_table_next = new_page_table;
+
+        copy_page_table_recursive(source_page_table_next, target_page_table_next, level - 1);
+    }
+}
+
+page_directory_t *clone_directory(page_directory_t *src)
+{
+    page_directory_t *new_directory = malloc(sizeof(page_directory_t));
+    if (new_directory == NULL)
+        return NULL;
+    uint64_t phy_frame = alloc_frames(1);
+    new_directory->table = phy_frame;
+    copy_page_table_recursive(src->table, new_directory->table, 4);
+    return new_directory;
+}

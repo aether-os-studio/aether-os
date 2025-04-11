@@ -90,10 +90,10 @@ task_t *task_create(const char *name, void (*entry)())
     task_frame->es = SELECTOR_KERNEL_DS;
     task->context = task_frame;
 
+    task->on_cpu = alloc_cpuid();
+    task->pgdir = clone_directory(get_kernel_page_dir());
     task->state = TASK_READY;
     task->magic = AETHER_MAGIC;
-
-    task->on_cpu = alloc_cpuid();
 
     return task;
 }

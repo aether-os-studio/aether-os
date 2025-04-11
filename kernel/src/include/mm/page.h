@@ -36,4 +36,6 @@ uint64_t get_cr3();
 page_directory_t *get_kernel_page_dir();
 void page_map_to(page_directory_t *directory, uint64_t addr, uint64_t frame, uint64_t flags);
 void page_map_range_to(page_directory_t *directory, uint64_t addr, uint64_t frame, uint64_t size, uint64_t flags);
+void copy_page_table_recursive(page_table_t *source_table, page_table_t *new_table, int level);
+page_directory_t *clone_directory(page_directory_t *src);
 void page_init();

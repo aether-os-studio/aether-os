@@ -3,6 +3,7 @@
 #include <klibc.h>
 #include <acpi/acpi.h>
 #include <task/fsgsbase.h>
+#include <mm/page.h>
 
 #define AETHER_MAGIC 0x1234567887654321
 
@@ -23,7 +24,7 @@ typedef struct task
     struct List list;
     struct pt_regs *context;
     uint64_t jiffies;
-    uint64_t kernel_stack;
+    page_directory_t *pgdir;
     task_state_t state;
     uint64_t magic;
 } task_t;
