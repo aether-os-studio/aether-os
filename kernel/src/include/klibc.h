@@ -10,6 +10,70 @@
 
 #include <irq/ptrace.h>
 
+#define container_of(ptr, type, member)                                     \
+    ({                                                                      \
+        decltype(((type *)0)->member) *p = (ptr);                           \
+        (type *)((unsigned long)p - (unsigned long)&(((type *)0)->member)); \
+    })
+
+struct List
+{
+    struct List *prev;
+    struct List *next;
+};
+
+static inline void list_init(struct List *list)
+{
+    list->prev = list;
+    list->next = list;
+}
+
+static inline void list_add_to_behind(struct List *entry, struct List *ne_w) ////add to entry behind
+{
+    ne_w->next = entry->next;
+    ne_w->prev = entry;
+    ne_w->next->prev = ne_w;
+    entry->next = ne_w;
+}
+
+static inline void list_add_to_before(struct List *entry, struct List *ne_w) ////add to entry behind
+{
+    ne_w->next = entry;
+    entry->prev->next = ne_w;
+    ne_w->prev = entry->prev;
+    entry->prev = ne_w;
+}
+
+static inline void list_del(struct List *entry)
+{
+    entry->next->prev = entry->prev;
+    entry->prev->next = entry->next;
+}
+
+static inline long list_is_empty(struct List *entry)
+{
+    if (entry == entry->next && entry->prev == entry)
+        return 1;
+    else
+        return 0;
+}
+
+static inline struct List *list_prev(struct List *entry)
+{
+    if (entry->prev != (struct List *)NULL)
+        return entry->prev;
+    else
+        return (struct List *)NULL;
+}
+
+static inline struct List *list_next(struct List *entry)
+{
+    if (entry->next != (struct List *)NULL)
+        return entry->next;
+    else
+        return (struct List *)NULL;
+}
+
 #define ABS(x) ((x) > 0 ? (x) : -(x)) // 绝对值
 // 最大最小值
 #define max(x, y) ((x > y) ? (x) : (y))
@@ -346,6 +410,36 @@ static inline long verify_area(unsigned char *addr, unsigned long size)
         return 1;
     else
         return 0;
+}
+
+typedef struct
+{
+    volatile int8_t lock; // 1:unlocked 0:locked
+} spinlock_t;
+
+static inline void spin_lock(spinlock_t *lock)
+{
+    __asm__ __volatile__("1:    \n\t"
+                         "lock decb %0   \n\t" // 尝试-1
+                         "jns 3f    \n\t"      // 加锁成功，跳转到步骤3
+                         "2:    \n\t"          // 加锁失败，稍后再试
+                         "pause \n\t"
+                         "cmpb $0, %0   \n\t"
+                         "jle   2b  \n\t" // 若锁被占用，则继续重试
+                         "jmp 1b    \n\t" // 尝试加锁
+                         "3:"
+                         : "=m"(lock->lock)::"memory");
+}
+
+static inline void spin_unlock(spinlock_t *lock)
+{
+    __asm__ __volatile__("movb $1, %0   \n\t"
+                         : "=m"(lock->lock)::"memory");
+}
+
+static inline void spin_init(spinlock_t *lock)
+{
+    lock->lock = 1;
 }
 
 #endif

@@ -42,6 +42,8 @@ int printk_init(const int char_size_x, const int char_size_y)
     pos.x = 0;
     pos.y = 0;
 
+    spin_init(&pos.lock);
+
     kdebug("width=%d\theight=%d", pos.width, pos.height);
 
     return 0;
@@ -622,11 +624,6 @@ int printk_color(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
      * @param ... 格式化字符串
      */
 
-    /*
-    if (get_rflags() & 0x200UL)
-        spin_lock(&printk_lock); // 不是中断处理程序调用printk，加锁
-        */
-
     va_list args;
     va_start(args, fmt);
 
@@ -634,6 +631,8 @@ int printk_color(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
 
     va_end(args);
     unsigned char current;
+
+    spin_lock(&pos.lock);
 
     int i; // 总共输出的字符数
     for (i = 0; i < len; ++i)
@@ -682,10 +681,8 @@ int printk_color(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
         }
     }
 
-    /*
-    if (get_rflags() & 0x200UL)
-        spin_unlock(&printk_lock);
-        */
+    spin_unlock(&pos.lock);
+
     return i;
 }
 

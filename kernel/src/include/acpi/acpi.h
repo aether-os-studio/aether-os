@@ -237,3 +237,5 @@ uint64_t lapic_id();
 
 void ioapic_enable(uint8_t vector);
 void ioapic_add(uint8_t vector, uint32_t irq);
+
+void smp_init();

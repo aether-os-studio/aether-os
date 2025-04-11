@@ -27,8 +27,7 @@
 #define EFB_MISMATCH 2  // 帧缓冲区与指定的屏幕大小不匹配
 #define EUNSUPPORTED 3  // 当前操作暂不被支持
 
-#include <stdint.h>
-#include <stdbool.h>
+#include <klibc.h>
 #include <stdarg.h>
 
 struct screen_info
@@ -39,6 +38,7 @@ struct screen_info
     int char_size_x, char_size_y;
     uint32_t *FB_address;
     uint64_t FB_length;
+    spinlock_t lock;
 };
 
 extern unsigned char font_ascii[256][16];

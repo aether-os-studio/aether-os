@@ -116,6 +116,8 @@ uint64_t c_do_irq(struct pt_regs *regs, uint8_t irq_num)
 {
     irq_desc_t *irq = &interrupt_desc[irq_num - 32];
 
+    send_eoi();
+
     if (irq->handler != NULL)
     {
         irq->handler(irq_num, irq->parameter, regs);
@@ -124,8 +126,6 @@ uint64_t c_do_irq(struct pt_regs *regs, uint8_t irq_num)
     {
         kwarn("Intr vector [%d] does not have a handler!");
     }
-
-    send_eoi();
 }
 
 int irq_register(uint8_t irq_num, void (*handler)(uint8_t irq_num, uint64_t parameter, struct pt_regs *regs), uint64_t paramater, hardware_intr_controller *controller, char *irq_name)
@@ -138,8 +138,11 @@ int irq_register(uint8_t irq_num, void (*handler)(uint8_t irq_num, uint64_t para
     p->flags = 0;
     p->handler = handler;
 
-    p->controller->install(irq_num, irq_num - 32);
-    p->controller->enable(irq_num);
+    if (p->controller)
+    {
+        p->controller->install(irq_num, irq_num - 32);
+        p->controller->enable(irq_num);
+    }
 
     return 0;
 }

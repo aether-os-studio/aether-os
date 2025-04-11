@@ -2,6 +2,7 @@
 #include <acpi/acpi.h>
 #include <mm/hhdm.h>
 #include <mm/page.h>
+#include <irq/irq.h>
 
 bool x2apic_mode;
 uint64_t lapic_address;
@@ -66,11 +67,13 @@ uint64_t lapic_id()
     return x2apic_mode ? phy_id : (phy_id >> 24);
 }
 
+uint64_t calibrated_timer_initial;
+
 void local_apic_init(bool is_print)
 {
     x2apic_mode = (mp_request.response->flags & 1U) != 0;
 
-    // lapic_write(LAPIC_REG_TIMER, APIC_TIMER_INTERRUPT_VECTOR);
+    lapic_write(LAPIC_REG_TIMER, APIC_TIMER_INTERRUPT_VECTOR);
     lapic_write(LAPIC_REG_SPURIOUS, 0xff | 1 << 8);
     lapic_write(LAPIC_REG_TIMER_DIV, 11);
 
@@ -80,7 +83,7 @@ void local_apic_init(bool is_print)
         if (nanoTime() - b >= 1000000)
             break;
     uint64_t lapic_timer = (~(uint32_t)0) - lapic_read(LAPIC_REG_TIMER_CURCNT);
-    uint64_t calibrated_timer_initial = (uint64_t)((uint64_t)(lapic_timer * 1000) / 250);
+    calibrated_timer_initial = (uint64_t)((uint64_t)(lapic_timer * 1000) / 250);
     if (is_print)
     {
         kinfo("Calibrated LAPIC timer: %d ticks per second.", calibrated_timer_initial);
@@ -91,6 +94,16 @@ void local_apic_init(bool is_print)
     {
         kinfo("Setup local %s.", x2apic_mode ? "x2APIC" : "APIC");
     }
+}
+
+void local_apic_ap_init()
+{
+    lapic_write(LAPIC_REG_TIMER, APIC_TIMER_INTERRUPT_VECTOR);
+    lapic_write(LAPIC_REG_SPURIOUS, 0xff | 1 << 8);
+    lapic_write(LAPIC_REG_TIMER_DIV, 11);
+
+    lapic_write(LAPIC_REG_TIMER, lapic_read(LAPIC_REG_TIMER) | 1 << 17);
+    lapic_write(LAPIC_REG_TIMER_INITCNT, calibrated_timer_initial);
 }
 
 void io_apic_init()
@@ -173,7 +186,73 @@ void apic_setup(MADT *madt)
     io_apic_init();
 }
 
-// void smp_setup()
-// {
-//     apu_startup(smp_request);
-// }
+#include <irq/trap.h>
+#include <task/fsgsbase.h>
+#include <task/task.h>
+
+extern void sse_init();
+
+extern bool task_initialized;
+
+void ap_entry(struct limine_mp_info *cpu)
+{
+    uint64_t cr3 = (uint64_t)get_kernel_page_dir()->table;
+    __asm__ __volatile__("movq %0, %%cr3" ::"r"(cr3) : "memory");
+
+    sse_init();
+
+    fsgsbase_init();
+
+    gdtidt_setup();
+
+    while (!task_initialized)
+    {
+    }
+
+    local_apic_ap_init();
+
+    write_gsbase((uint64_t)idle_task);
+
+    while (1)
+    {
+        sti();
+        hlt();
+    }
+}
+
+uint64_t cpu_count;
+
+uint32_t cpuid_to_lapicid[MAX_CPU_NUM];
+
+uint32_t get_cpuid_by_lapic_id(uint32_t lapic_id)
+{
+    for (uint32_t cpu_id = 0; cpu_id < cpu_count; cpu_id++)
+    {
+        if (cpuid_to_lapicid[cpu_id] == lapic_id)
+        {
+            return cpu_id;
+        }
+    }
+
+    return 0;
+}
+
+void apu_startup(struct limine_mp_response *smp_response)
+{
+    cpu_count = smp_response->cpu_count;
+
+    for (uint64_t i = 0; i < smp_response->cpu_count; i++)
+    {
+        struct limine_mp_info *cpu = smp_response->cpus[i];
+        cpuid_to_lapicid[i] = cpu->lapic_id;
+        if (cpu->lapic_id == smp_response->bsp_lapic_id)
+            continue;
+
+        cpu->goto_address = ap_entry;
+    }
+}
+
+void smp_init()
+{
+    apu_startup(mp_request.response);
+}

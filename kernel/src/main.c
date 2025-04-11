@@ -37,6 +37,7 @@ void sse_init()
 #include <irq/gate.h>
 #include <irq/trap.h>
 #include <task/fsgsbase.h>
+#include <task/task.h>
 
 void kmain(void)
 {
@@ -57,7 +58,14 @@ void kmain(void)
     acpi_init();
     irq_init();
 
-    fsgsbase_init();
+    smp_init();
 
-    hcf();
+    fsgsbase_init();
+    task_init();
+
+    while (1)
+    {
+        sti();
+        hlt();
+    }
 }
