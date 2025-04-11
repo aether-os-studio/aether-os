@@ -4,8 +4,6 @@
 #include <limine.h>
 
 __attribute__((used, section(".limine_requests"))) static volatile LIMINE_BASE_REVISION(3);
-// Finally, define the start and end markers for the Limine requests.
-// These can also be moved anywhere, to any .c file, as seen fit.
 
 __attribute__((used, section(".limine_requests_start"))) static volatile LIMINE_REQUESTS_START_MARKER;
 
@@ -33,13 +31,11 @@ void sse_init()
 #include <kprint.h>
 #include <mm/hhdm.h>
 #include <mm/frame.h>
+#include <mm/page.h>
+#include <mm/heap.h>
 
-// The following will be our kernel's entry point.
-// If renaming kmain() to something else, make sure to change the
-// linker script accordingly.
 void kmain(void)
 {
-    // Ensure the bootloader actually understands our base revision (see spec).
     if (LIMINE_BASE_REVISION_SUPPORTED == false)
     {
         hcf();
@@ -51,7 +47,8 @@ void kmain(void)
 
     hhdm_init();
     frame_init();
+    page_init();
+    heap_init();
 
-    // We're done, just hang...
     hcf();
 }
