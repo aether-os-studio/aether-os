@@ -31,6 +31,8 @@ void sse_init()
 }
 
 #include <kprint.h>
+#include <mm/hhdm.h>
+#include <mm/frame.h>
 
 // The following will be our kernel's entry point.
 // If renaming kmain() to something else, make sure to change the
@@ -46,6 +48,9 @@ void kmain(void)
     sse_init();
 
     printk_init(8, 16);
+
+    hhdm_init();
+    frame_init();
 
     // We're done, just hang...
     hcf();
