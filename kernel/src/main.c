@@ -36,6 +36,7 @@ void sse_init()
 #include <acpi/acpi.h>
 #include <irq/gate.h>
 #include <irq/trap.h>
+#include <task/fsgsbase.h>
 
 void kmain(void)
 {
@@ -55,6 +56,8 @@ void kmain(void)
 
     acpi_init();
     irq_init();
+
+    fsgsbase_init();
 
     hcf();
 }

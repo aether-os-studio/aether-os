@@ -14,6 +14,11 @@ struct gate_struct
     unsigned char x[16];
 };
 
+#define SELECTOR_KERNEL_CS (0x08)
+#define SELECTOR_KERNEL_DS (0x10)
+#define SELECTOR_USER_CS (0x20 | 0x3)
+#define SELECTOR_USER_DS (0x18 | 0x3)
+
 extern struct desc_struct GDT_Table[]; // GDT_Table是head.S中的GDT_Table
 extern struct gate_struct IDT_Table[]; // IDT_Table是head.S中的IDT_Table
 extern unsigned int TSS64_Table[26];

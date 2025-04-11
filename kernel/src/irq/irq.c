@@ -128,7 +128,7 @@ uint64_t c_do_irq(struct pt_regs *regs, uint8_t irq_num)
     send_eoi();
 }
 
-int irq_register(uint8_t irq_num, void *arg, void (*handler)(uint8_t irq_num, uint64_t parameter, struct pt_regs *regs), uint64_t paramater, hardware_intr_controller *controller, char *irq_name)
+int irq_register(uint8_t irq_num, void (*handler)(uint8_t irq_num, uint64_t parameter, struct pt_regs *regs), uint64_t paramater, hardware_intr_controller *controller, char *irq_name)
 {
     irq_desc_t *p = &interrupt_desc[irq_num - 32];
 
@@ -138,7 +138,7 @@ int irq_register(uint8_t irq_num, void *arg, void (*handler)(uint8_t irq_num, ui
     p->flags = 0;
     p->handler = handler;
 
-    p->controller->install(irq_num, arg);
+    p->controller->install(irq_num, irq_num - 32);
     p->controller->enable(irq_num);
 
     return 0;
