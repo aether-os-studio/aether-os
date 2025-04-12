@@ -19,8 +19,8 @@ struct gate_struct
 #define SELECTOR_USER_CS (0x20 | 0x3)
 #define SELECTOR_USER_DS (0x18 | 0x3)
 
-extern struct desc_struct GDT_Table[]; // GDT_Table是head.S中的GDT_Table
-extern struct gate_struct IDT_Table[]; // IDT_Table是head.S中的IDT_Table
+extern struct desc_struct GDT_Table[]; // GDT_Table是entry.S中的GDT_Table
+extern struct gate_struct IDT_Table[]; // IDT_Table是entry.S中的IDT_Table
 extern unsigned int TSS64_Table[26];
 
 #define _set_gate(gate_selector_addr, attr, ist, code_addr)                                            \
@@ -107,7 +107,7 @@ static inline void set_system_trap_gate(unsigned int n, unsigned char ist, void 
  *
  */
 
-static inline void set_tss64(unsigned int *Table, uint64_t rsp0, uint64_t rsp1, uint64_t rsp2, uint64_t ist1, uint64_t ist2, uint64_t ist3,
+static inline void set_tss64(uint32_t *Table, uint64_t rsp0, uint64_t rsp1, uint64_t rsp2, uint64_t ist1, uint64_t ist2, uint64_t ist3,
                              uint64_t ist4, uint64_t ist5, uint64_t ist6, uint64_t ist7)
 {
     *(uint64_t *)(Table + 1) = rsp0;

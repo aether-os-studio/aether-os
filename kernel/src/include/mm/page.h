@@ -7,6 +7,8 @@
 #define PTE_NO_EXECUTE (((uint64_t)0x1) << 63)
 
 #define KERNEL_PTE_FLAGS (PTE_PRESENT | PTE_WRITEABLE | PTE_NO_EXECUTE)
+#define USER_EXEC_PTE_FLAGS (PTE_PRESENT | PTE_WRITEABLE | PTE_USER)
+#define USER_PTE_FLAGS (PTE_PRESENT | PTE_WRITEABLE | PTE_USER | PTE_NO_EXECUTE)
 
 #define PAGE_SIZE 0x1000
 
@@ -34,6 +36,7 @@ static inline void flush_tlb(uint64_t addr)
 
 uint64_t get_cr3();
 page_directory_t *get_kernel_page_dir();
+page_directory_t *get_current_page_dir();
 void page_map_to(page_directory_t *directory, uint64_t addr, uint64_t frame, uint64_t flags);
 void page_map_range_to(page_directory_t *directory, uint64_t addr, uint64_t frame, uint64_t size, uint64_t flags);
 void copy_page_table_recursive(page_table_t *source_table, page_table_t *new_table, int level);

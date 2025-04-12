@@ -124,7 +124,7 @@ uint64_t c_do_irq(struct pt_regs *regs, uint8_t irq_num)
     }
     else
     {
-        kwarn("Intr vector [%d] does not have a handler!");
+        kwarn("Intr vector [%d] does not have a handler!", irq_num);
     }
 }
 

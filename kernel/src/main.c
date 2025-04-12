@@ -36,11 +36,14 @@ void sse_init()
 #include <acpi/acpi.h>
 #include <irq/gate.h>
 #include <irq/trap.h>
+#include <syscall/syscall.h>
 #include <task/fsgsbase.h>
 #include <task/task.h>
 
 void kmain(void)
 {
+    cli();
+
     if (LIMINE_BASE_REVISION_SUPPORTED == false)
     {
         hcf();
@@ -60,6 +63,9 @@ void kmain(void)
 
     smp_init();
 
+    syscall_init();
+
+    tss_init();
     fsgsbase_init();
     task_init();
 

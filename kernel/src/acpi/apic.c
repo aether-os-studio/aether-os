@@ -80,7 +80,7 @@ void local_apic_init(bool is_print)
     uint64_t b = nanoTime();
     lapic_write(LAPIC_REG_TIMER_INITCNT, ~((uint32_t)0));
     for (;;)
-        if (nanoTime() - b >= 1000000)
+        if (nanoTime() - b >= 10000000)
             break;
     uint64_t lapic_timer = (~(uint32_t)0) - lapic_read(LAPIC_REG_TIMER_CURCNT);
     calibrated_timer_initial = (uint64_t)((uint64_t)(lapic_timer * 1000) / 250);
@@ -187,6 +187,7 @@ void apic_setup(MADT *madt)
 }
 
 #include <irq/trap.h>
+#include <syscall/syscall.h>
 #include <task/fsgsbase.h>
 #include <task/task.h>
 
@@ -196,12 +197,12 @@ extern bool task_initialized;
 
 void ap_entry(struct limine_mp_info *cpu)
 {
+    cli();
+
     uint64_t cr3 = (uint64_t)get_kernel_page_dir()->table;
     __asm__ __volatile__("movq %0, %%cr3" ::"r"(cr3) : "memory");
 
     sse_init();
-
-    fsgsbase_init();
 
     gdtidt_setup();
 
@@ -209,9 +210,14 @@ void ap_entry(struct limine_mp_info *cpu)
     {
     }
 
+    syscall_init();
+
+    tss_init();
+    fsgsbase_init();
+
     local_apic_ap_init();
 
-    write_gsbase((uint64_t)idle_task);
+    task_switch_to(NULL, NULL, idle_tasks[current_cpu_id]);
 
     while (1)
     {

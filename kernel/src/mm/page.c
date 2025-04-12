@@ -1,6 +1,7 @@
 #include <mm/hhdm.h>
 #include <mm/frame.h>
 #include <mm/page.h>
+#include <task/task.h>
 
 page_directory_t kernel_page_dir;
 
@@ -41,6 +42,11 @@ page_table_t *page_table_create(page_table_entry_t *entry, bool user)
     }
     page_table_t *table = (page_table_t *)phys_to_virt(entry->value & 0x000fffffffff000);
     return table;
+}
+
+page_directory_t *get_current_page_dir()
+{
+    return current_task->pgdir;
 }
 
 void page_map_to(page_directory_t *directory, uint64_t addr, uint64_t frame, uint64_t flags)

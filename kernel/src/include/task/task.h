@@ -9,6 +9,28 @@
 
 #define MAX_CPU_NUM 256
 
+#define USER_STACK_TOP 0x6ffffa000000
+#define USER_STACK_SIZE (16 * 1024 * 1024)
+
+typedef struct tss
+{
+    uint32_t reserved0;
+    uint64_t rsp0;
+    uint64_t rsp1;
+    uint64_t rsp2;
+    uint64_t reserved1;
+    uint64_t ist1;
+    uint64_t ist2;
+    uint64_t ist3;
+    uint64_t ist4;
+    uint64_t ist5;
+    uint64_t ist6;
+    uint64_t ist7;
+    uint64_t reserved2;
+    uint16_t reserved3;
+    uint16_t iomapbaseaddr;
+} __attribute__((packed)) tss_t;
+
 typedef enum task_state
 {
     TASK_RUNNING = 1,
@@ -17,14 +39,28 @@ typedef enum task_state
     TASK_DIED,
 } task_state_t;
 
+#define TASK_NAME_LEN 64
+
+typedef struct task_thread
+{
+    uint64_t fs;
+    uint64_t gs;
+
+    uint64_t fsbase;
+    uint64_t gsbase;
+} task_thread_t;
+
 typedef struct task
 {
+    uint64_t self_ref;
+    char name[TASK_NAME_LEN];
     uint64_t task_id;
     uint64_t on_cpu;
     struct List list;
     struct pt_regs *context;
     uint64_t jiffies;
     page_directory_t *pgdir;
+    task_thread_t *thread;
     task_state_t state;
     uint64_t magic;
 } task_t;
@@ -32,7 +68,7 @@ typedef struct task
 #define MAX_TASK_NUM 1024
 
 extern task_t *tasks[MAX_TASK_NUM];
-extern task_t *idle_task;
+extern task_t *idle_tasks[MAX_CPU_NUM];
 
 uint32_t get_cpuid_by_lapic_id(uint32_t lapic_id);
 
@@ -41,6 +77,19 @@ uint32_t get_cpuid_by_lapic_id(uint32_t lapic_id);
 task_t *task_create(const char *name, void (*entry)());
 void task_switch_to(struct pt_regs *curr, task_t *prev, task_t *next);
 
-#define current_task ((task_t *)read_gsbase())
+static inline task_t *get_current_task()
+{
+    task_t *ret = (task_t *)read_kgsbase();
+    // __asm__ __volatile__("movq %%gs:%%rax, %%rax" : "=a"(ret) : "a"(offsetof(task_t, self_ref)));
+    return ret;
+}
+
+#define current_task get_current_task()
+
+void task_to_user_mode(uint64_t entry);
+
+void task_exit(int code);
+
+void tss_init();
 
 void task_init();

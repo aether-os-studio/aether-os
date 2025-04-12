@@ -49,9 +49,19 @@ void wrgsbase(uint64_t value)
     __asm__ __volatile__("wrgsbase %0" ::"r"(value));
 }
 
+uint64_t read_kgsbase()
+{
+    return rdmsr(IA32_KERNEL_GS_BASE);
+}
+
+void write_kgsbase(uint64_t value)
+{
+    wrmsr(IA32_KERNEL_GS_BASE, value);
+}
+
 uint64_t fsgsbase_init()
 {
-    bool support = has_fsgsbase();
+    uint32_t support = has_fsgsbase();
     if (support)
     {
         uint64_t cr4 = 0;

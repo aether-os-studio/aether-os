@@ -10,7 +10,7 @@ override OUTPUT := kernel
 PREFIX := /usr/local
 
 # User controllable C compiler command.
-CC := cc
+CC := gcc
 
 # User controllable C flags.
 CFLAGS := -g -O0 -pipe
