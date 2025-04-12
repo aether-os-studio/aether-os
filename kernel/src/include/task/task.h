@@ -4,13 +4,14 @@
 #include <acpi/acpi.h>
 #include <task/fsgsbase.h>
 #include <mm/page.h>
+#include <task/signal.h>
 
 #define AETHER_MAGIC 0x1234567887654321
 
 #define MAX_CPU_NUM 256
 
 #define USER_STACK_TOP 0x6ffffa000000
-#define USER_STACK_SIZE (16 * 1024 * 1024)
+#define USER_STACK_SIZE (8 * 1024 * 1024)
 
 typedef struct tss
 {
@@ -55,6 +56,7 @@ typedef struct task
     uint64_t self_ref;
     char name[TASK_NAME_LEN];
     uint64_t task_id;
+    uint64_t uid;
     uint64_t on_cpu;
     struct List list;
     struct pt_regs *context;
@@ -62,8 +64,15 @@ typedef struct task
     page_directory_t *pgdir;
     task_thread_t *thread;
     task_state_t state;
+    int status;
+    sigaction_t actions[MAXSIG];
+    uint64_t signal;
+    uint64_t blocked;
     uint64_t magic;
 } task_t;
+
+#define KERNEL_USER 0
+#define NORMAL_USER 1
 
 #define MAX_TASK_NUM 1024
 
@@ -74,7 +83,7 @@ uint32_t get_cpuid_by_lapic_id(uint32_t lapic_id);
 
 #define current_cpu_id get_cpuid_by_lapic_id(lapic_id())
 
-task_t *task_create(const char *name, void (*entry)());
+task_t *task_create(const char *name, void (*entry)(), uint64_t uid);
 void task_switch_to(struct pt_regs *curr, task_t *prev, task_t *next);
 
 static inline task_t *get_current_task()
@@ -85,6 +94,11 @@ static inline task_t *get_current_task()
 }
 
 #define current_task get_current_task()
+
+task_t *get_task(uint64_t pid);
+
+int task_block(task_t *task, struct List *blist, task_state_t state, int timeout_ms);
+void task_unblock(task_t *task, int reason);
 
 void task_to_user_mode(uint64_t entry);
 

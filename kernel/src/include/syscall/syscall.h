@@ -2,13 +2,23 @@
 
 #include <klibc.h>
 
-#define SYS_READ 0
-#define SYS_WRITE 1
-#define SYS_OPEN 2
-#define SYS_CLOSE 3
+enum
+{
+    SYS_READ = 1,
+    SYS_WRITE,
+    SYS_OPEN,
+    SYS_CLOSE,
+    SYS_SIGACTION,
+    SYS_SIGNAL,
+    SYS_SETMASK,
+    SYS_SENDSIGNAL,
+    SYS_EXIT,
+    SYS_GETPID,
 
-#define SYS_EXIT 60
+    SYS_NUM,
+};
 
-extern void syscall_exception();
+extern void
+syscall_exception();
 
 void syscall_init();

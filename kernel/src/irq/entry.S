@@ -85,11 +85,14 @@ Restore_all:
 
     popq %rax
     addq $0x10, %rsp // 弹出变量FUNC和errcode
+
     iretq
 
 ret_from_exception:
     // === 从中断中返回 ===
 ENTRY(ret_from_intr)
+    call task_signal
+
     jmp Restore_all
 
     
@@ -359,6 +362,7 @@ ENTRY(syscall_exception)
     callq real_memcpy
 
     movq %rsp, %rdi
+    movq %r15, %rsi
     callq syscall_handler
 
     movq %r15, %rdi
@@ -392,7 +396,5 @@ ret_from_syscall:
     popq %rax
 
     addq $0x38, %rsp
-
-    sti
 
     sysretq

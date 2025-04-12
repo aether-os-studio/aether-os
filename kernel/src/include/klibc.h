@@ -8,6 +8,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+#include <syscall/errno.h>
 #include <irq/ptrace.h>
 
 #define container_of(ptr, type, member)                                     \

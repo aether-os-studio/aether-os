@@ -1,27 +1,6 @@
 #pragma once
 
-enum
-{
-    SYS_READ = 1,
-    SYS_WRITE,
-    SYS_OPEN,
-    SYS_CLOSE,
-    SYS_SIGACTION,
-    SYS_SIGNAL,
-    SYS_SETMASK,
-    SYS_SENDSIGNAL,
-    SYS_EXIT,
-    SYS_GETPID,
-
-    SYS_NUM,
-};
-
-typedef unsigned char uint8_t;
-typedef unsigned short uint16_t;
-typedef unsigned int uint32_t;
-typedef unsigned long long uint64_t;
-
-uint64_t enter_syscall(uint64_t idx, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t arg4, uint64_t arg5, uint64_t arg6);
+#include <klibc.h>
 
 enum SIGNAL
 {
@@ -50,7 +29,21 @@ enum SIGNAL
     SIGTTOU = 22, // 后台进程请求输出
 };
 
-typedef unsigned long long sigset_t;
+#define MINSIG 1
+#define MAXSIG 31
+
+#define SIGMASK(sig) (1UL << (sig - 1))
+
+// 不阻止在指定的信号处理程序中再收到该信号
+#define SIG_NOMASK 0x40000000
+
+// 信号句柄一旦被调用过就恢复到默认处理句柄
+#define SIG_ONESHOT 0x80000000
+
+#define SIG_DFL ((void (*)(int))0) // 默认的信号处理程序（信号句柄）
+#define SIG_IGN ((void (*)(int))1) // 忽略信号的处理程序
+
+typedef uint64_t sigset_t;
 
 // 信号处理结构
 typedef struct sigaction_t
@@ -61,15 +54,9 @@ typedef struct sigaction_t
     void (*restorer)(void); // 恢复函数指针
 } sigaction_t;
 
-extern void restorer();
-
-int signal(int sig, uint64_t handler);
-
-int sigaction(int sg, sigaction_t *act, sigaction_t *oldact);
-
-void send_signal(int pid, int sig);
-
-int getpid();
-
-int read(int fd, void *buf, int len);
-int write(int fd, void *buf, int len);
+int sys_sgetmask();
+int sys_ssetmask(int newmask);
+int sys_signal(int sig, uint64_t handler, uint64_t restorer);
+int sys_sigaction(int sig, sigaction_t *action, sigaction_t *oldaction);
+void sys_sendsignal(uint64_t pid, int sig);
+int sys_kill(int pid, int sig);

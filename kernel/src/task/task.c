@@ -6,6 +6,8 @@
 #include <irq/irq.h>
 #include <kprint.h>
 
+struct List block_list;
+
 tss_t tss[MAX_CPU_NUM];
 
 task_t *tasks[MAX_TASK_NUM];
@@ -76,7 +78,7 @@ void timer_handler(uint8_t irq, uint64_t param, struct pt_regs *regs)
     task_switch_to(regs, current_task, next);
 }
 
-task_t *task_create(const char *name, void (*entry)())
+task_t *task_create(const char *name, void (*entry)(), uint64_t uid)
 {
     task_t *task = get_free_task();
 
@@ -99,11 +101,6 @@ task_t *task_create(const char *name, void (*entry)())
     task->self_ref = (uint64_t)task;
     task->on_cpu = alloc_cpuid();
     task->pgdir = clone_directory(get_kernel_page_dir());
-    if (task->pgdir == NULL)
-    {
-        kerror("task %s alloc page dir failed", task->name);
-        task->pgdir = get_kernel_page_dir();
-    }
     task->state = TASK_READY;
     task->magic = AETHER_MAGIC;
 
@@ -112,6 +109,14 @@ task_t *task_create(const char *name, void (*entry)())
     task->thread->gs = SELECTOR_KERNEL_DS;
     task->thread->fsbase = 0;
     task->thread->gsbase = 0;
+
+    task->signal = 0;
+    task->blocked = 0;
+
+    task->uid = uid;
+
+    task->status = 0;
+    task->state = TASK_READY;
 
     return task;
 }
@@ -157,9 +162,9 @@ void task_init()
     memset(tasks, 0, sizeof(tasks));
     for (uint64_t i = 0; i < cpu_count; i++)
     {
-        idle_tasks[i] = task_create("idle", idle_thread);
+        idle_tasks[i] = task_create("idle", idle_thread, KERNEL_USER);
     }
-    task_create("init", init_thread);
+    task_create("init", init_thread, NORMAL_USER);
 
     write_kgsbase((uint64_t)idle_tasks[current_cpu_id]);
 
@@ -205,6 +210,7 @@ void task_switch_to(struct pt_regs *curr, task_t *prev, task_t *next)
 
         next->state = TASK_RUNNING;
         __asm__ __volatile__("movq %0, %%cr3\n\t" ::"r"(next->pgdir->table));
+
         __asm__ __volatile__("movq %0, %%rsp\n\t"
                              "jmp ret_from_intr" ::"r"(next->context));
     }
@@ -221,7 +227,54 @@ void task_exit(int code)
 
     current_task->state = TASK_DIED;
 
+    current_task->status = code;
+
     task_t *next = task_search(TASK_READY, current_cpu_id);
 
     task_switch_to(NULL, NULL, next);
+}
+
+task_t *get_task(uint64_t pid)
+{
+    for (uint64_t i = 0; i < MAX_TASK_NUM; i++)
+    {
+        if (tasks[i] == NULL)
+            continue;
+        if (tasks[i]->task_id == pid)
+            return tasks[i];
+    }
+}
+
+int task_block(task_t *task, struct List *blist, task_state_t state, int timeout_ms)
+{
+    if (blist == NULL)
+    {
+        blist = &block_list;
+    }
+
+    list_add_to_behind(blist, &task->list);
+    if (timeout_ms > 0)
+    {
+        // todo
+    }
+
+    task->state = state;
+
+    if (current_task == task)
+    {
+        task_switch_to(NULL, NULL, task_search(TASK_READY, current_cpu_id));
+    }
+
+    return task->status;
+}
+
+void task_unblock(task_t *task, int reason)
+{
+    if (task->list.next)
+    {
+        list_del(&task->list);
+    }
+
+    task->status = reason;
+    task->state = TASK_READY;
 }

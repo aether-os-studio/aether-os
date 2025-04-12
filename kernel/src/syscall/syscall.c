@@ -3,6 +3,7 @@
 #include <task/task.h>
 #include <irq/irq.h>
 #include <irq/gate.h>
+#include <task/signal.h>
 
 uint64_t sys_write(uint64_t fd, uint64_t buf, uint64_t len)
 {
@@ -33,14 +34,14 @@ uint64_t switch_to_kernel_stack()
     return (uint64_t)current_task + PAGE_SIZE;
 }
 
-void syscall_handler(struct pt_regs *regs)
+void syscall_handler(struct pt_regs *regs, struct pt_regs *user_regs)
 {
     uint64_t idx = regs->rax;
 
     uint64_t arg1 = regs->rdi;
     uint64_t arg2 = regs->rsi;
     uint64_t arg3 = regs->rdx;
-    uint64_t arg4 = regs->rcx;
+    uint64_t arg4 = regs->r10;
     uint64_t arg5 = regs->r8;
     uint64_t arg6 = regs->r9;
 
@@ -49,11 +50,33 @@ void syscall_handler(struct pt_regs *regs)
     case SYS_WRITE:
         regs->rax = sys_write(arg1, arg2, arg3);
         break;
+
     case SYS_EXIT:
         regs->rax = sys_exit(arg1);
         break;
+    case SYS_GETPID:
+        regs->rax = current_task->task_id;
+        break;
+
+    case SYS_SIGNAL:
+        regs->rax = sys_signal(arg1, arg2, arg3);
+        break;
+
+    case SYS_SIGACTION:
+        regs->rax = sys_sigaction(arg1, (sigaction_t *)arg2, (sigaction_t *)arg3);
+        break;
+
+    case SYS_SETMASK:
+        regs->rax = sys_ssetmask(arg1);
+        break;
+
+    case SYS_SENDSIGNAL:
+        sys_sendsignal(arg1, arg2);
+        regs->rax = 0;
+        break;
 
     default:
+        regs->rax = ((uint64_t)-ENOSYS);
         break;
     }
 }
