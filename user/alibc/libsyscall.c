@@ -73,3 +73,13 @@ void load_module(const char *name)
 {
     enter_syscall(SYS_LOAD_MODULE, (uint64_t)name, 0, 0, 0, 0, 0);
 }
+
+void get_bootstrap_info(bootstrap_info_t *info)
+{
+    enter_syscall(SYS_GET_INFO, (uint64_t)info, 0, 0, 0, 0, 0);
+}
+
+uint64_t physmap(uint64_t addr, uint64_t size, uint64_t flags)
+{
+    return enter_syscall(SYS_PHYSMAP, addr, size, flags, 0, 0, 0);
+}

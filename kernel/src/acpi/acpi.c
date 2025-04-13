@@ -18,6 +18,8 @@
         }                                               \
     } while (0);
 
+uint64_t rsdp_paddr;
+
 XSDT *xsdt;
 
 __attribute__((used, section(".limine_requests"))) static volatile struct limine_rsdp_request rsdp_request = {.id = LIMINE_RSDP_REQUEST, .revision = 0, .response = NULL};
@@ -45,14 +47,16 @@ void acpi_init()
 {
     struct limine_rsdp_response *response = rsdp_request.response;
 
-    RSDP *rsdp = (RSDP *)response->address;
+    rsdp_paddr = response->address;
+
+    RSDP *rsdp = (RSDP *)rsdp_paddr;
     if (rsdp == NULL)
     {
         kwarn("Cannot find acpi RSDP table.");
         return;
     }
     rsdp = phys_to_virt(rsdp);
-    page_map_range_to(get_kernel_page_dir(), (uint64_t)rsdp, response->address, PAGE_SIZE, KERNEL_PTE_FLAGS);
+    page_map_range_to(get_kernel_page_dir(), (uint64_t)rsdp, rsdp_paddr, PAGE_SIZE, KERNEL_PTE_FLAGS);
 
     xsdt = (XSDT *)rsdp->xsdt_address;
     if (xsdt == NULL)

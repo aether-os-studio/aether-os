@@ -37,11 +37,11 @@ page_table_t *page_table_create(page_table_entry_t *entry, bool user)
     {
         uint64_t frame = alloc_frames(1);
         entry->value = frame | PTE_PRESENT | PTE_WRITEABLE | (user ? PTE_USER : 0);
-        page_table_t *table = (page_table_t *)phys_to_virt(entry->value & 0x00007fffffff000UL);
+        page_table_t *table = (page_table_t *)phys_to_virt(entry->value & 0x000ffffffffff000UL);
         page_table_clear(table);
         return table;
     }
-    page_table_t *table = (page_table_t *)phys_to_virt(entry->value & 0x00007fffffff000UL);
+    page_table_t *table = (page_table_t *)phys_to_virt(entry->value & 0x000ffffffffff000UL);
     return table;
 }
 
@@ -64,15 +64,16 @@ void page_map_to(page_directory_t *directory, uint64_t addr, uint64_t frame, uin
     page_table_t *l2_table = page_table_create(&(l3_table->entries[l3_index]), user);
     page_table_t *l1_table = page_table_create(&(l2_table->entries[l2_index]), user);
 
-    l1_table->entries[l1_index].value = (frame & 0x00007fffffff000) | flags;
+    l1_table->entries[l1_index].value = (frame & 0x000ffffffffff000UL) | flags;
 
     flush_tlb(addr);
 }
 
 void page_map_range_to(page_directory_t *directory, uint64_t addr, uint64_t frame, uint64_t size, uint64_t flags)
 {
-    addr = addr & (~0xFFFUL);
-    frame = frame & (~0xFFFUL);
+    addr = addr & (~(PAGE_SIZE - 1));
+    frame = frame & (~(PAGE_SIZE - 1));
+    size = (size + PAGE_SIZE - 1) & (~(PAGE_SIZE - 1));
 
     uint64_t paddr = frame;
     for (uint64_t vaddr = addr; vaddr < addr + size; vaddr += PAGE_SIZE)

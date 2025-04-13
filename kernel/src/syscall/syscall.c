@@ -4,6 +4,8 @@
 #include <irq/irq.h>
 #include <irq/gate.h>
 #include <task/signal.h>
+#include <acpi/acpi.h>
+#include <mm/hhdm.h>
 
 uint64_t sys_write(uint64_t fd, uint64_t buf, uint64_t len)
 {
@@ -22,6 +24,60 @@ uint64_t sys_exit(uint64_t code)
     task_exit((int)code);
 
     return 0xFFFFFFFFFFFFFFFF;
+}
+
+uint64_t sys_physmap(uint64_t addr, uint64_t size, uint64_t flags)
+{
+    if (addr >= get_physical_memory_offset() || size == 0)
+    {
+        return (uint64_t)-EINVAL;
+    }
+
+    page_directory_t *current_page_dir = get_current_page_dir();
+
+    uint64_t vaddr = USER_MAPPING_SPACE + addr;
+
+    uint64_t pte_flags = 0;
+
+    pte_flags |= (PTE_PRESENT | PTE_USER);
+
+    if (flags & PROT_READ)
+    {
+    }
+
+    if (flags & PROT_WRITE)
+    {
+        pte_flags |= PTE_WRITEABLE;
+    }
+
+    if (!(flags & PROT_EXEC))
+    {
+        pte_flags |= PTE_NO_EXECUTE;
+    }
+
+    page_map_range_to(current_page_dir, vaddr, addr, size, pte_flags);
+
+    return vaddr;
+}
+
+extern volatile struct limine_framebuffer_request framebuffer_request;
+
+void sys_get_info(bootstrap_info_t *info)
+{
+    info->rsdp_phys_address = rsdp_paddr;
+
+    struct limine_framebuffer *framebuffer = framebuffer_request.response->framebuffers[0];
+
+    info->framebuffer_address = (uint64_t)framebuffer->address;
+    info->framebuffer_height = framebuffer->width;
+    info->framebuffer_height = framebuffer->height;
+
+    info->red_mask_shift = framebuffer->red_mask_shift;
+    info->red_mask_size = framebuffer->red_mask_size;
+    info->blue_mask_shift = framebuffer->blue_mask_shift;
+    info->blue_mask_size = framebuffer->blue_mask_size;
+    info->green_mask_shift = framebuffer->green_mask_shift;
+    info->green_mask_size = framebuffer->green_mask_size;
 }
 
 extern void sys_load_module(const char *);
@@ -97,6 +153,15 @@ void syscall_handler(struct pt_regs *regs, struct pt_regs *user_regs)
     case SYS_IOPL:
         sys_iopl(arg1);
         regs->rax = 0;
+        break;
+
+    case SYS_GET_INFO:
+        sys_get_info((bootstrap_info_t *)arg1);
+        regs->rax = 0;
+        break;
+
+    case SYS_PHYSMAP:
+        regs->rax = sys_physmap(arg1, arg2, arg3);
         break;
 
     default:

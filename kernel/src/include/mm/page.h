@@ -1,14 +1,14 @@
 #pragma once
 
-#define PTE_PRESENT (0x1 << 0)
-#define PTE_WRITEABLE (0x1 << 1)
-#define PTE_USER (0x1 << 2)
-#define PTE_HUGE (0x1 << 7)
-#define PTE_NO_EXECUTE (((uint64_t)0x1) << 63)
+#define PTE_PRESENT (0x1UL << 0)
+#define PTE_WRITEABLE (0x1UL << 1)
+#define PTE_USER (0x1UL << 2)
+#define PTE_HUGE (0x1UL << 7)
+#define PTE_NO_EXECUTE (0x1UL << 63)
 
 #define KERNEL_PTE_FLAGS (PTE_PRESENT | PTE_WRITEABLE | PTE_NO_EXECUTE)
 #define USER_EXEC_PTE_FLAGS (PTE_PRESENT | PTE_WRITEABLE | PTE_USER)
-#define USER_PTE_FLAGS (PTE_PRESENT | PTE_WRITEABLE | PTE_USER | PTE_NO_EXECUTE)
+#define USER_PTE_FLAGS (USER_EXEC_PTE_FLAGS | PTE_NO_EXECUTE)
 
 #define PAGE_SIZE 0x1000
 

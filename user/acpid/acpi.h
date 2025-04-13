@@ -1,6 +1,6 @@
 #pragma once
 
-#include <klibc.h>
+#include <stdint.h>
 
 typedef struct
 {
@@ -209,36 +209,3 @@ typedef struct madt_hander MadtHeader;
 typedef struct madt_io_apic MadtIOApic;
 typedef struct madt_local_apic MadtLocalApic;
 typedef struct facp_table acpi_facp_t;
-
-extern uint64_t rsdp_paddr;
-
-void *find_table(const char *name);
-
-void acpi_init();
-
-void hpet_setup(Hpet *hpet);
-uint64_t nanoTime();
-
-#define MADT_APIC_CPU 0x00
-#define MADT_APIC_IO 0x01
-#define MADT_APIC_INT 0x02
-#define MADT_APIC_NMI 0x03
-
-#define LAPIC_REG_ID 0x20
-#define LAPIC_REG_TIMER_CURCNT 0x390
-#define LAPIC_REG_TIMER_INITCNT 0x380
-#define LAPIC_REG_TIMER 0x320
-#define LAPIC_REG_SPURIOUS 0xf0
-#define LAPIC_REG_TIMER_DIV 0x3e0
-
-#define APIC_ICR_LOW 0x300
-#define APIC_ICR_HIGH 0x310
-
-void apic_setup(MADT *madt);
-void send_eoi();
-uint64_t lapic_id();
-
-void ioapic_enable(uint8_t vector);
-void ioapic_add(uint8_t vector, uint32_t irq);
-
-void smp_init();
