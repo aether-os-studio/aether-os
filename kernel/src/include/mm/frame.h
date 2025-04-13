@@ -16,5 +16,5 @@ extern FrameAllocator frame_allocator;
 
 void frame_init();
 
-void free_frame(uint64_t addr);
+void free_frames(uint64_t addr, uint64_t size);
 uint64_t alloc_frames(size_t count);

@@ -15,6 +15,8 @@ enum
     SYS_EXIT,
     SYS_GETPID,
     SYS_FORK,
+    SYS_WAITPID,
+    SYS_LOAD_MODULE,
     SYS_IOPL,
 
     SYS_NUM,

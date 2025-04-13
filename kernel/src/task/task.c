@@ -103,6 +103,7 @@ task_t *task_create(const char *name, void (*entry)(), uint64_t uid)
     task->self_ref = (uint64_t)task;
     list_init(&task->list);
     task->parent_task_id = task->task_id;
+    task->waitpid = 0;
     task->syscall_stack = phys_to_virt(alloc_frames(STACK_SIZE / PAGE_SIZE)) + STACK_SIZE;
     task->on_cpu = alloc_cpuid();
     task->pgdir = clone_directory(get_kernel_page_dir());
@@ -120,6 +121,7 @@ task_t *task_create(const char *name, void (*entry)(), uint64_t uid)
     task->blocked = 0;
 
     task->need_schedule = false;
+    task->userspace_io_allowed = false;
 
     task->uid = uid;
 
@@ -216,6 +218,8 @@ void task_switch_to(struct pt_regs *curr, task_t *prev, task_t *next)
         write_kgsbase((uint64_t)next);
 
         tss[current_cpu_id].rsp0 = (uint64_t)next->context;
+        uint16_t value = current_task->userspace_io_allowed ? sizeof(tss_t) : 0xFFFF;
+        tss[current_cpu_id].iomapbaseaddr = value;
 
         __asm__ __volatile__("movq %0, %%fs\n\t" ::"r"(next->thread->fs));
         __asm__ __volatile__("movq %0, %%gs\n\t" ::"r"(next->thread->gs));
@@ -245,6 +249,12 @@ void task_exit(int code)
     current_task->state = TASK_DIED;
 
     current_task->status = code;
+
+    task_t *parent = tasks[current_task->parent_task_id];
+    if (parent->state == TASK_BLOCKING && parent->waitpid == 0 || parent->waitpid == current_task->task_id)
+    {
+        task_unblock(parent, EOK);
+    }
 
     task_t *next = task_search(TASK_READY, current_cpu_id);
 
@@ -279,7 +289,9 @@ int task_block(task_t *task, struct List *blist, task_state_t state, int timeout
 
     if (current_task == task)
     {
-        task_switch_to(NULL, current_task, task_search(TASK_READY, current_cpu_id));
+        sti();
+
+        __asm__ __volatile__("int %0\n\t" ::"i"(APIC_TIMER_INTERRUPT_VECTOR));
     }
 
     return task->status;
@@ -346,6 +358,56 @@ uint64_t sys_fork(struct pt_regs *regs)
     return child->task_id;
 }
 
+uint64_t sys_waitpid(uint64_t pid, int *status)
+{
+    task_t *child = NULL;
+
+    while (1)
+    {
+        bool has_child = false;
+
+        for (uint64_t i = cpu_count + 1; i < MAX_TASK_NUM; i++)
+        {
+            task_t *ptr = tasks[i];
+            if (ptr == NULL)
+                continue;
+
+            if (ptr->parent_task_id != current_task->task_id)
+                continue;
+
+            if (pid != ptr->task_id && pid != 0)
+                continue;
+
+            if (ptr->state == TASK_DIED)
+            {
+                child = ptr;
+                tasks[i] = NULL;
+                goto rollback;
+            }
+
+            has_child = true;
+        }
+        if (has_child)
+        {
+            current_task->waitpid = pid;
+            task_block(current_task, NULL, TASK_BLOCKING, 0);
+            continue;
+        }
+
+        break;
+    }
+
+    return -1;
+
+rollback:
+    *status = (int)child->status;
+    uint32_t ret = child->task_id;
+
+    free_frames((uint64_t)child, 1);
+
+    return ret;
+}
+
 void sys_iopl(uint64_t level)
 {
     if (level > 3)
@@ -353,7 +415,11 @@ void sys_iopl(uint64_t level)
         return;
     }
 
-    uint16_t value = (level == 3) ? sizeof(tss_t) : 0xFFFF;
+    bool allow = (level == 3);
+
+    current_task->userspace_io_allowed = allow;
+
+    uint16_t value = allow ? sizeof(tss_t) : 0xFFFF;
 
     tss[current_cpu_id].iomapbaseaddr = value;
 }

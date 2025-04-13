@@ -58,3 +58,13 @@ void iopl(uint64_t level)
 {
     enter_syscall(SYS_IOPL, level, 0, 0, 0, 0, 0);
 }
+
+int waitpid(int pid, int *status)
+{
+    enter_syscall(SYS_WAITPID, (uint64_t)pid, (uint64_t)status, 0, 0, 0, 0);
+}
+
+void load_module(const char *name)
+{
+    enter_syscall(SYS_LOAD_MODULE, (uint64_t)name, 0, 0, 0, 0, 0);
+}

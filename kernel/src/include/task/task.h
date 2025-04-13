@@ -60,6 +60,7 @@ typedef struct task
     char name[TASK_NAME_LEN];
     uint64_t task_id;
     uint64_t parent_task_id;
+    uint64_t waitpid;
     uint64_t syscall_stack;
     uint64_t uid;
     uint64_t on_cpu;
@@ -74,6 +75,7 @@ typedef struct task
     uint64_t signal;
     uint64_t blocked;
     bool need_schedule;
+    bool userspace_io_allowed;
 } task_t;
 
 #define KERNEL_USER 0
@@ -115,7 +117,7 @@ void task_to_user_mode(uint64_t entry, uint64_t load_start, uint64_t load_end);
 void task_exit(int code);
 
 uint64_t sys_fork(struct pt_regs *regs);
-
+uint64_t sys_waitpid(uint64_t pid, int *status);
 void sys_iopl(uint64_t level);
 
 void tss_init();

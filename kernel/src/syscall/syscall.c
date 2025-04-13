@@ -24,6 +24,8 @@ uint64_t sys_exit(uint64_t code)
     return 0xFFFFFFFFFFFFFFFF;
 }
 
+extern void sys_load_module(const char *);
+
 void *real_memcpy(void *dst, void *src, long len)
 {
     return memcpy(dst, src, len);
@@ -66,6 +68,9 @@ void syscall_handler(struct pt_regs *regs, struct pt_regs *user_regs)
     case SYS_FORK:
         regs->rax = sys_fork(regs);
         break;
+    case SYS_WAITPID:
+        regs->rax = sys_waitpid(arg1, (int *)arg2);
+        break;
 
     case SYS_SIGNAL:
         regs->rax = sys_signal(arg1, arg2, arg3);
@@ -78,6 +83,11 @@ void syscall_handler(struct pt_regs *regs, struct pt_regs *user_regs)
         break;
     case SYS_SENDSIGNAL:
         sys_sendsignal(arg1, arg2);
+        regs->rax = 0;
+        break;
+
+    case SYS_LOAD_MODULE:
+        sys_load_module((const char *)arg1);
         regs->rax = 0;
         break;
 
