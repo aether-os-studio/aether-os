@@ -36,4 +36,4 @@ void machine_check();
 void SIMD_exception();
 void virtualization_exception();
 
-void syscall_exception();
+void timer_handler_exception();

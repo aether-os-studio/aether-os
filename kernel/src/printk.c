@@ -632,6 +632,7 @@ int printk_color(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
     va_end(args);
     unsigned char current;
 
+    cli();
     spin_lock(&pos.lock);
 
     int i; // 总共输出的字符数
@@ -682,6 +683,7 @@ int printk_color(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
     }
 
     spin_unlock(&pos.lock);
+    sti();
 
     return i;
 }

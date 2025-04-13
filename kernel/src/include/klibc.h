@@ -86,12 +86,6 @@ static inline uint64_t round(double x)
     return (uint64_t)(x + 0.5);
 }
 
-#define container_of(ptr, type, member)                                     \
-    ({                                                                      \
-        typeof(((type *)0)->member) *p = (ptr);                             \
-        (type *)((unsigned long)p - (unsigned long)&(((type *)0)->member)); \
-    })
-
 #define sti() __asm__ __volatile__("sti	\n\t" ::: "memory")
 #define cli() __asm__ __volatile__("cli	\n\t" ::: "memory")
 #define nop() __asm__ __volatile__("nop	\n\t")

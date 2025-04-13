@@ -5,7 +5,7 @@ OFILES := $(patsubst %, $(CWD)/obj/%.o, $(CFILES))
 CC := gcc
 
 # User controllable C flags.
-CFLAGS := -g -O0 -pipe -Iinclude
+CFLAGS := -g -O0 -Iinclude -mno-red-zone
 
 all: $(OFILES)
 

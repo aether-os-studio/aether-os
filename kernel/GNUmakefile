@@ -10,10 +10,10 @@ override OUTPUT := kernel
 PREFIX := /usr/local
 
 # User controllable C compiler command.
-CC := gcc
+CC := clang
 
 # User controllable C flags.
-CFLAGS := -g -O0 -pipe
+CFLAGS := -g -O0
 
 # User controllable C preprocessor flags. We set none by default.
 CPPFLAGS :=
@@ -62,7 +62,6 @@ override CPPFLAGS := \
     -I src/include \
     -isystem freestnd-c-hdrs \
     $(CPPFLAGS) \
-    -DLIMINE_API_REVISION=3 \
     -MMD \
     -MP
 

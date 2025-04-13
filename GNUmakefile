@@ -2,13 +2,20 @@
 MAKEFLAGS += -rR
 .SUFFIXES:
 
+SMP ?= 2
 DEBUG ?= 0
+KVM ?= 0
+SUDO ?= 0
 
 # Default user QEMU flags. These are appended to the QEMU command calls.
-QEMUFLAGS := -M q35 -cpu max -m 2G -smp 2 -d cpu_reset
+QEMUFLAGS := -M q35 -cpu max -m 4G -smp $(SMP) -d cpu_reset
 
 ifeq ($(DEBUG), 1)
 QEMUFLAGS += -s -S
+endif
+
+ifeq ($(KVM), 1)
+QEMUFLAGS += --enable-kvm
 endif
 
 override IMAGE_NAME := aether
@@ -28,35 +35,67 @@ all-hdd: $(IMAGE_NAME).hdd
 
 .PHONY: run
 run: $(IMAGE_NAME).iso
+ifeq ($(SUDO), 1)
+	sudo qemu-system-x86_64 \
+		-M q35 \
+		-cdrom $(IMAGE_NAME).iso \
+		-boot d \
+		$(QEMUFLAGS)
+else
 	qemu-system-x86_64 \
 		-M q35 \
 		-cdrom $(IMAGE_NAME).iso \
 		-boot d \
 		$(QEMUFLAGS)
+endif
 
 .PHONY: run-uefi
 run-uefi: ovmf/ovmf-code-x86_64.fd $(IMAGE_NAME).iso
+ifeq ($(SUDO), 1)
+	sudo qemu-system-x86_64 \
+		-M q35 \
+		-drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-code-x86_64.fd,readonly=on \
+		-cdrom $(IMAGE_NAME).iso \
+		-boot d \
+		$(QEMUFLAGS)
+else
 	qemu-system-x86_64 \
 		-M q35 \
 		-drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-code-x86_64.fd,readonly=on \
 		-cdrom $(IMAGE_NAME).iso \
 		-boot d \
 		$(QEMUFLAGS)
+endif
 
 .PHONY: run-hdd
 run-hdd: $(IMAGE_NAME).hdd
+ifeq ($(SUDO), 1)
+	sudo qemu-system-x86_64 \
+		-M q35 \
+		-hda $(IMAGE_NAME).hdd \
+		$(QEMUFLAGS)
+else
 	qemu-system-x86_64 \
 		-M q35 \
 		-hda $(IMAGE_NAME).hdd \
 		$(QEMUFLAGS)
+endif
 
 .PHONY: run-hdd-uefi
 run-hdd-uefi: ovmf/ovmf-code-x86_64.fd $(IMAGE_NAME).hdd
+ifeq ($(SUDO), 1)
+	sudo qemu-system-x86_64 \
+		-M q35 \
+		-drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-code-x86_64.fd,readonly=on \
+		-hda $(IMAGE_NAME).hdd \
+		$(QEMUFLAGS)
+else
 	qemu-system-x86_64 \
 		-M q35 \
 		-drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-code-x86_64.fd,readonly=on \
 		-hda $(IMAGE_NAME).hdd \
 		$(QEMUFLAGS)
+endif
 
 ovmf/ovmf-code-x86_64.fd:
 	mkdir -p ovmf

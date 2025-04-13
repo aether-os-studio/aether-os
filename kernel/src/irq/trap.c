@@ -1,33 +1,34 @@
 #include <irq/gate.h>
 #include <irq/trap.h>
 #include <irq/irq.h>
+#include <task/task.h>
 #include <kprint.h>
 
 void irq_init()
 {
     gdtidt_setup();
 
-    set_trap_gate(0, 0, &divide_error);
-    set_trap_gate(1, 0, &debug);
-    set_intr_gate(2, 0, &nmi);
-    set_system_trap_gate(3, 0, &int3);
-    set_system_trap_gate(4, 0, &overflow);
-    set_system_trap_gate(5, 0, &bounds);
-    set_trap_gate(6, 0, &undefined_opcode);
-    set_trap_gate(7, 0, &dev_not_avaliable);
-    set_trap_gate(8, 0, &double_fault);
-    set_trap_gate(9, 0, &coprocessor_segment_overrun);
-    set_trap_gate(10, 0, &invalid_TSS);
-    set_trap_gate(11, 0, &segment_not_exists);
-    set_trap_gate(12, 0, &stack_segment_fault);
-    set_trap_gate(13, 0, &general_protection);
-    set_trap_gate(14, 0, &page_fault);
+    set_trap_gate(0, 0, divide_error);
+    set_trap_gate(1, 0, debug);
+    set_intr_gate(2, 0, nmi);
+    set_system_trap_gate(3, 0, int3);
+    set_system_trap_gate(4, 0, overflow);
+    set_system_trap_gate(5, 0, bounds);
+    set_trap_gate(6, 0, undefined_opcode);
+    set_trap_gate(7, 0, dev_not_avaliable);
+    set_trap_gate(8, 0, double_fault);
+    set_trap_gate(9, 0, coprocessor_segment_overrun);
+    set_trap_gate(10, 0, invalid_TSS);
+    set_trap_gate(11, 0, segment_not_exists);
+    set_trap_gate(12, 0, stack_segment_fault);
+    set_trap_gate(13, 0, general_protection);
+    set_trap_gate(14, 0, page_fault);
     // 中断号15由Intel保留，不能使用
-    set_trap_gate(16, 0, &x87_FPU_error);
-    set_trap_gate(17, 0, &alignment_check);
-    set_trap_gate(18, 0, &machine_check);
-    set_trap_gate(19, 0, &SIMD_exception);
-    set_trap_gate(20, 0, &virtualization_exception);
+    set_trap_gate(16, 0, x87_FPU_error);
+    set_trap_gate(17, 0, alignment_check);
+    set_trap_gate(18, 0, machine_check);
+    set_trap_gate(19, 0, SIMD_exception);
+    set_trap_gate(20, 0, virtualization_exception);
 
     generic_interrupt_table_init();
 }

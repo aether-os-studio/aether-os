@@ -24,16 +24,18 @@ void frame_init()
         }
     }
 
+    uint64_t last_size = UINT64_MAX;
+
     size_t bitmap_size = (memory_size / 4096 + 7) / 8;
     uint64_t bitmap_address = 0;
 
     for (uint64_t i = 0; i < memory_map->entry_count; i++)
     {
         struct limine_memmap_entry *region = memory_map->entries[i];
-        if (region->type == LIMINE_MEMMAP_USABLE && region->length >= bitmap_size)
+        if (region->type == LIMINE_MEMMAP_USABLE && region->length >= bitmap_size && region->length < last_size)
         {
+            last_size = region->length;
             bitmap_address = region->base;
-            break;
         }
     }
 
@@ -41,7 +43,7 @@ void frame_init()
         return;
 
     Bitmap *bitmap = &frame_allocator.bitmap;
-    bitmap_init(bitmap, phys_to_virt(bitmap_address), bitmap_size);
+    bitmap_init(bitmap, (uint8_t *)phys_to_virt(bitmap_address), bitmap_size);
 
     size_t origin_frames = 0;
     for (uint64_t i = 0; i < memory_map->entry_count; i++)

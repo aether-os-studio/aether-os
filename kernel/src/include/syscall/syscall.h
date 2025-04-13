@@ -14,11 +14,12 @@ enum
     SYS_SENDSIGNAL,
     SYS_EXIT,
     SYS_GETPID,
+    SYS_FORK,
+    SYS_IOPL,
 
     SYS_NUM,
 };
 
-extern void
-syscall_exception();
+extern void syscall_exception();
 
 void syscall_init();

@@ -25,8 +25,6 @@ typedef struct signal_frame
     uint64_t ds;
     uint64_t es;
     uint64_t rax;
-    uint64_t func;
-    uint64_t errcode;
     uint64_t rip;
 } signal_frame_t;
 
@@ -46,6 +44,7 @@ int sys_ssetmask(int newmask)
 
     int old = current_task->blocked;
     current_task->blocked = newmask & ~SIGMASK(SIGKILL);
+
     return old;
 }
 
@@ -87,6 +86,8 @@ int sys_sigaction(int sig, sigaction_t *action, sigaction_t *oldaction)
     {
         ptr->mask |= SIGMASK(sig);
     }
+
+    return 0;
 }
 
 int sys_kill(int pid, int sig)
@@ -112,7 +113,7 @@ int sys_kill(int pid, int sig)
 
     task->signal |= SIGMASK(sig);
 
-    if (task->state = TASK_BLOCKING)
+    if (task->state == TASK_BLOCKING)
     {
         task_unblock(task, -EINTR);
     }
@@ -129,8 +130,6 @@ void sys_sendsignal(uint64_t pid, int sig)
 void task_signal()
 {
     cli();
-
-    task_t *task = current_task;
 
     uint64_t map = current_task->signal & (~current_task->blocked);
     if (!map)
@@ -163,9 +162,9 @@ void task_signal()
         task_exit(SIGMASK(sig));
     }
 
-    struct pt_regs *iframe = (struct pt_regs *)((uint64_t)current_task + PAGE_SIZE - sizeof(struct pt_regs));
+    struct pt_regs *iframe = current_task->context;
 
-    signal_frame_t *frame = (signal_frame_t *)(iframe->rsp - sizeof(signal_frame_t));
+    signal_frame_t *frame = (signal_frame_t *)iframe->rsp - 1;
 
     frame->rax = iframe->rax;
 
@@ -188,6 +187,8 @@ void task_signal()
     frame->r13 = iframe->r13;
     frame->r14 = iframe->r14;
     frame->r15 = iframe->r15;
+
+    frame->rip = iframe->rip;
 
     frame->blocked = 0;
 

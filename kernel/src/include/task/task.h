@@ -6,12 +6,12 @@
 #include <mm/page.h>
 #include <task/signal.h>
 
-#define AETHER_MAGIC 0x1234567887654321
-
 #define MAX_CPU_NUM 256
 
+#define STACK_SIZE 16384
+
 #define USER_STACK_TOP 0x6ffffa000000
-#define USER_STACK_SIZE (8 * 1024 * 1024)
+#define USER_STACK_SIZE (1 * 1024 * 1024)
 
 typedef struct tss
 {
@@ -44,6 +44,9 @@ typedef enum task_state
 
 typedef struct task_thread
 {
+    uint64_t elf_mapping_start;
+    uint64_t elf_mapping_end;
+
     uint64_t fs;
     uint64_t gs;
 
@@ -56,6 +59,8 @@ typedef struct task
     uint64_t self_ref;
     char name[TASK_NAME_LEN];
     uint64_t task_id;
+    uint64_t parent_task_id;
+    uint64_t syscall_stack;
     uint64_t uid;
     uint64_t on_cpu;
     struct List list;
@@ -68,7 +73,7 @@ typedef struct task
     sigaction_t actions[MAXSIG];
     uint64_t signal;
     uint64_t blocked;
-    uint64_t magic;
+    bool need_schedule;
 } task_t;
 
 #define KERNEL_USER 0
@@ -76,12 +81,16 @@ typedef struct task
 
 #define MAX_TASK_NUM 1024
 
+extern bool can_schedule;
+
 extern task_t *tasks[MAX_TASK_NUM];
 extern task_t *idle_tasks[MAX_CPU_NUM];
 
 uint32_t get_cpuid_by_lapic_id(uint32_t lapic_id);
 
 #define current_cpu_id get_cpuid_by_lapic_id(lapic_id())
+
+void timer_handler(uint8_t irq, uint64_t param, struct pt_regs *regs);
 
 task_t *task_create(const char *name, void (*entry)(), uint64_t uid);
 void task_switch_to(struct pt_regs *curr, task_t *prev, task_t *next);
@@ -95,14 +104,19 @@ static inline task_t *get_current_task()
 
 #define current_task get_current_task()
 
+task_t *task_search(task_state_t state, uint32_t cpu_id);
 task_t *get_task(uint64_t pid);
 
 int task_block(task_t *task, struct List *blist, task_state_t state, int timeout_ms);
 void task_unblock(task_t *task, int reason);
 
-void task_to_user_mode(uint64_t entry);
+void task_to_user_mode(uint64_t entry, uint64_t load_start, uint64_t load_end);
 
 void task_exit(int code);
+
+uint64_t sys_fork(struct pt_regs *regs);
+
+void sys_iopl(uint64_t level);
 
 void tss_init();
 

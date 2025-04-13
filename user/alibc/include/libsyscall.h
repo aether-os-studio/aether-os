@@ -12,6 +12,8 @@ enum
     SYS_SENDSIGNAL,
     SYS_EXIT,
     SYS_GETPID,
+    SYS_FORK,
+    SYS_IOPL,
 
     SYS_NUM,
 };
@@ -73,3 +75,7 @@ int getpid();
 
 int read(int fd, void *buf, int len);
 int write(int fd, void *buf, int len);
+
+void iopl(uint64_t level);
+
+int fork();

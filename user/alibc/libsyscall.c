@@ -48,3 +48,13 @@ int write(int fd, void *buf, int len)
 {
     return enter_syscall(SYS_WRITE, (uint64_t)fd, (uint64_t)buf, (uint64_t)len, 0, 0, 0);
 }
+
+int fork()
+{
+    return (int)enter_syscall(SYS_FORK, 0, 0, 0, 0, 0, 0);
+}
+
+void iopl(uint64_t level)
+{
+    enter_syscall(SYS_IOPL, level, 0, 0, 0, 0, 0);
+}

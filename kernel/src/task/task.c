@@ -6,12 +6,16 @@
 #include <irq/irq.h>
 #include <kprint.h>
 
+bool can_schedule;
+
 struct List block_list;
 
 tss_t tss[MAX_CPU_NUM];
 
 task_t *tasks[MAX_TASK_NUM];
 task_t *idle_tasks[MAX_CPU_NUM];
+
+spinlock_t fork_lock;
 
 extern uint64_t cpu_count;
 
@@ -31,7 +35,7 @@ task_t *get_free_task()
         if (tasks[i] == NULL)
         {
             task_t *task = (task_t *)phys_to_virt(alloc_frames(1));
-            memset(task, 0, sizeof(task_t));
+            memset(task, 0, PAGE_SIZE);
             task->task_id = i;
             tasks[i] = task;
             return task;
@@ -41,7 +45,7 @@ task_t *get_free_task()
     return NULL;
 }
 
-static task_t *task_search(task_state_t state, uint32_t cpu_id)
+task_t *task_search(task_state_t state, uint32_t cpu_id)
 {
     task_t *task = NULL;
 
@@ -73,22 +77,20 @@ void timer_handler(uint8_t irq, uint64_t param, struct pt_regs *regs)
 {
     current_task->jiffies++;
 
-    task_t *next = task_search(TASK_READY, current_cpu_id);
-
-    task_switch_to(regs, current_task, next);
+    current_task->need_schedule = true;
 }
 
 task_t *task_create(const char *name, void (*entry)(), uint64_t uid)
 {
     task_t *task = get_free_task();
 
-    uint64_t stack = (uint64_t)task + PAGE_SIZE;
-
+    uint64_t stack = (uint64_t)phys_to_virt(alloc_frames(STACK_SIZE / PAGE_SIZE)) + STACK_SIZE;
     stack -= sizeof(struct pt_regs);
     struct pt_regs *task_frame = (struct pt_regs *)stack;
 
     memset(task_frame, 0, sizeof(struct pt_regs));
-    task_frame->rflags = 0x200;
+    task_frame->rflags = (1UL << 9);
+    task_frame->rbp = stack;
     task_frame->rsp = stack;
     task_frame->rip = (uint64_t)entry;
     task_frame->cs = SELECTOR_KERNEL_CS;
@@ -99,19 +101,25 @@ task_t *task_create(const char *name, void (*entry)(), uint64_t uid)
 
     strcpy(task->name, name);
     task->self_ref = (uint64_t)task;
+    list_init(&task->list);
+    task->parent_task_id = task->task_id;
+    task->syscall_stack = phys_to_virt(alloc_frames(STACK_SIZE / PAGE_SIZE)) + STACK_SIZE;
     task->on_cpu = alloc_cpuid();
     task->pgdir = clone_directory(get_kernel_page_dir());
     task->state = TASK_READY;
-    task->magic = AETHER_MAGIC;
 
     task->thread = (task_thread_t *)(task + 1);
     task->thread->fs = SELECTOR_KERNEL_DS;
     task->thread->gs = SELECTOR_KERNEL_DS;
     task->thread->fsbase = 0;
     task->thread->gsbase = 0;
+    task->thread->elf_mapping_start = 0;
+    task->thread->elf_mapping_end = 0;
 
     task->signal = 0;
     task->blocked = 0;
+
+    task->need_schedule = false;
 
     task->uid = uid;
 
@@ -148,7 +156,7 @@ void init_thread()
 
 void tss_init()
 {
-    uint64_t sp = phys_to_virt(alloc_frames(1));
+    uint64_t sp = phys_to_virt(alloc_frames(STACK_SIZE / PAGE_SIZE)) + STACK_SIZE;
     uint64_t offset = 10 + current_cpu_id * 2;
     set_tss64((uint32_t *)&tss[current_cpu_id], sp, sp, sp, sp, sp, sp, sp, sp, sp, sp);
     set_tss_descriptor(offset, &tss[current_cpu_id]);
@@ -160,19 +168,25 @@ bool task_initialized = false;
 void task_init()
 {
     memset(tasks, 0, sizeof(tasks));
+
+    can_schedule = true;
+
+    spin_init(&fork_lock);
+    list_init(&block_list);
+
     for (uint64_t i = 0; i < cpu_count; i++)
     {
         idle_tasks[i] = task_create("idle", idle_thread, KERNEL_USER);
     }
     task_create("init", init_thread, NORMAL_USER);
 
-    write_kgsbase((uint64_t)idle_tasks[current_cpu_id]);
-
     irq_register(APIC_TIMER_INTERRUPT_VECTOR, timer_handler, 0, NULL, "APIC TIMER");
 
     task_initialized = true;
 
     cli();
+
+    write_kgsbase((uint64_t)idle_tasks[current_cpu_id]);
 
     task_switch_to(NULL, NULL, idle_tasks[current_cpu_id]);
 }
@@ -182,37 +196,40 @@ void task_switch_to(struct pt_regs *curr, task_t *prev, task_t *next)
     if (curr != NULL && prev != NULL)
     {
         memcpy(prev->context, curr, sizeof(struct pt_regs));
+        // prev->context = curr;
     }
 
-    if (next->magic == AETHER_MAGIC)
+    if (prev)
     {
-        if (prev)
-        {
-            __asm__ __volatile__("movq %%fs, %0\n\t"
-                                 "movq %%gs, %0\n\t" : "=r"(prev->thread->fs),
-                                                       "=r"(prev->thread->gs));
+        __asm__ __volatile__("movq %%fs, %0\n\t" : "=r"(prev->thread->fs));
+        __asm__ __volatile__("movq %%gs, %0\n\t" : "=r"(prev->thread->gs));
 
-            prev->thread->fsbase = read_fsbase();
-            prev->thread->gsbase = read_gsbase();
+        prev->thread->fsbase = read_fsbase();
+        prev->thread->gsbase = read_gsbase();
 
-            prev->state = TASK_READY;
-        }
+        prev->state = TASK_READY;
+    }
 
-        // Start to schedule
+    if (can_schedule)
+    {
+        // Start to switch
         write_kgsbase((uint64_t)next);
 
-        __asm__ __volatile__("movq %0, %%fs\n\t"
-                             "movq %0, %%gs\n\t" ::"r"(next->thread->fs),
-                             "r"(next->thread->gs));
+        tss[current_cpu_id].rsp0 = (uint64_t)next->context;
+
+        __asm__ __volatile__("movq %0, %%fs\n\t" ::"r"(next->thread->fs));
+        __asm__ __volatile__("movq %0, %%gs\n\t" ::"r"(next->thread->gs));
 
         write_fsbase(next->thread->fsbase);
         write_gsbase(next->thread->gsbase);
 
         next->state = TASK_RUNNING;
+
         __asm__ __volatile__("movq %0, %%cr3\n\t" ::"r"(next->pgdir->table));
 
-        __asm__ __volatile__("movq %0, %%rsp\n\t"
-                             "jmp ret_from_intr" ::"r"(next->context));
+        __asm__ __volatile__(
+            "movq %0, %%rsp\n\t"
+            "jmp ret_from_intr" ::"r"(next->context));
     }
 }
 
@@ -262,7 +279,7 @@ int task_block(task_t *task, struct List *blist, task_state_t state, int timeout
 
     if (current_task == task)
     {
-        task_switch_to(NULL, NULL, task_search(TASK_READY, current_cpu_id));
+        task_switch_to(NULL, current_task, task_search(TASK_READY, current_cpu_id));
     }
 
     return task->status;
@@ -277,4 +294,66 @@ void task_unblock(task_t *task, int reason)
 
     task->status = reason;
     task->state = TASK_READY;
+}
+
+uint64_t sys_fork(struct pt_regs *regs)
+{
+    cli();
+
+    can_schedule = false;
+
+    spin_lock(&fork_lock);
+
+    task_t *child = get_free_task();
+    strcpy(child->name, current_task->name);
+
+    child->self_ref = (uint64_t)child;
+    list_init(&child->list);
+    child->on_cpu = alloc_cpuid();
+
+    child->uid = current_task->uid;
+
+    child->parent_task_id = current_task->task_id;
+
+    child->state = TASK_READY;
+
+    child->pgdir = clone_directory(get_current_page_dir());
+
+    child->syscall_stack = phys_to_virt(alloc_frames(STACK_SIZE / PAGE_SIZE)) + STACK_SIZE;
+
+    child->thread = (task_thread_t *)(child + 1);
+    memcpy(child->thread, current_task->thread, sizeof(task_thread_t));
+
+    uint64_t stack = (uint64_t)phys_to_virt(alloc_frames(STACK_SIZE / PAGE_SIZE)) + STACK_SIZE;
+    stack -= sizeof(struct pt_regs);
+    struct pt_regs *task_frame = (struct pt_regs *)stack;
+    memcpy(task_frame, regs, sizeof(struct pt_regs));
+    task_frame->rax = 0;
+
+    child->context = task_frame;
+
+    child->status = 0;
+
+    child->signal = 0;
+    child->blocked = 0;
+
+    child->need_schedule = false;
+
+    spin_unlock(&fork_lock);
+
+    can_schedule = true;
+
+    return child->task_id;
+}
+
+void sys_iopl(uint64_t level)
+{
+    if (level > 3)
+    {
+        return;
+    }
+
+    uint16_t value = (level == 3) ? sizeof(tss_t) : 0xFFFF;
+
+    tss[current_cpu_id].iomapbaseaddr = value;
 }

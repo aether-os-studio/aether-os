@@ -3,12 +3,13 @@
 .global restorer
 
 restorer:
+    endbr64
+
     addq $0x8, %rsp
-    movq (%rsp), %rdi
+    movq -0x8(%rsp), %rdi
     call ssetmask
     addq $0x8, %rsp
 
-    // === 恢复调用现场 ===
     popq %r15
     popq %r14
     popq %r13
@@ -24,13 +25,12 @@ restorer:
     popq %rdi
     popq %rbp
 
-    popq %rax   //  不允许直接pop到ds
+    popq %rax
     movq %rax, %ds
 
     popq %rax
     movq %rax, %es
 
     popq %rax
-    addq $0x10, %rsp // 弹出变量FUNC和errcode
 
     ret

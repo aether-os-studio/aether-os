@@ -1,14 +1,15 @@
 #include <kprint.h>
 #include <task/execve.h>
+#include <mm/frame.h>
 #include <mm/page.h>
 #include <task/task.h>
 #include <irq/gate.h>
 
-void task_to_user_mode(uint64_t addr)
+void task_to_user_mode(uint64_t addr, uint64_t load_start, uint64_t load_end)
 {
     cli();
 
-    uint64_t stack = (uint64_t)current_task + PAGE_SIZE;
+    uint64_t stack = (uint64_t)current_task->context;
     stack -= sizeof(struct pt_regs);
 
     struct pt_regs *iframe = (struct pt_regs *)stack;
@@ -19,8 +20,6 @@ void task_to_user_mode(uint64_t addr)
     iframe->es = SELECTOR_USER_DS;
     iframe->rflags = (0 << 12) | (0b10) | (1 << 9);
     iframe->rip = addr;
-    iframe->rbp = USER_STACK_TOP;
-    iframe->rsp = USER_STACK_TOP;
 
     current_task->thread->gs = SELECTOR_USER_DS;
     current_task->thread->fs = SELECTOR_USER_DS;
@@ -29,9 +28,15 @@ void task_to_user_mode(uint64_t addr)
                          "movq %0, %%gs\n\t" ::"r"(current_task->thread->fs),
                          "r"(current_task->thread->gs));
 
+    current_task->thread->elf_mapping_start = load_start;
+    current_task->thread->elf_mapping_end = load_end;
+
     __asm__ __volatile__("movq %0, %%cr3\n\t" ::"r"(current_task->pgdir->table));
 
     page_map_range_to(get_current_page_dir(), USER_STACK_TOP - USER_STACK_SIZE, 0, USER_STACK_SIZE, USER_PTE_FLAGS);
+
+    iframe->rbp = USER_STACK_TOP;
+    iframe->rsp = USER_STACK_TOP;
 
     write_kgsbase((uint64_t)current_task);
 
@@ -51,8 +56,8 @@ void load_module(struct limine_file *module)
     }
 
     // 验证ELF魔数
-    if (memcmp(ehdr->e_ident, "\x7F"
-                              "ELF",
+    if (memcmp((void *)ehdr->e_ident, "\x7F"
+                                      "ELF",
                4) != 0)
     {
         kerror("Invalid ELF magic\n");
@@ -67,6 +72,9 @@ void load_module(struct limine_file *module)
         kerror("Unsupported ELF format\n");
         return;
     }
+
+    uint64_t load_start = UINT64_MAX;
+    uint64_t load_end = 0;
 
     // 处理程序头
     const Elf64_Phdr *phdr = (const Elf64_Phdr *)((char *)ehdr + ehdr->e_phoff);
@@ -86,6 +94,11 @@ void load_module(struct limine_file *module)
         uint64_t size_diff = seg_addr - aligned_addr;
         uint64_t alloc_size = (seg_size + size_diff + page_mask) & ~page_mask;
 
+        if (aligned_addr < load_start)
+            load_start = aligned_addr;
+        else if (aligned_addr + alloc_size > load_end)
+            load_end = aligned_addr + alloc_size;
+
         page_directory_t *pgdir = get_current_page_dir();
         page_map_range_to(pgdir, aligned_addr, 0, alloc_size, USER_EXEC_PTE_FLAGS);
 
@@ -103,7 +116,5 @@ void load_module(struct limine_file *module)
     }
 
     char buf[128];
-    task_to_user_mode(e_entry);
-
-    return 0;
+    task_to_user_mode(e_entry, load_start, load_end);
 }

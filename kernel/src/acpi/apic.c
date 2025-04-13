@@ -80,7 +80,7 @@ void local_apic_init(bool is_print)
     uint64_t b = nanoTime();
     lapic_write(LAPIC_REG_TIMER_INITCNT, ~((uint32_t)0));
     for (;;)
-        if (nanoTime() - b >= 10000000)
+        if (nanoTime() - b >= 20000000)
             break;
     uint64_t lapic_timer = (~(uint32_t)0) - lapic_read(LAPIC_REG_TIMER_CURCNT);
     calibrated_timer_initial = (uint64_t)((uint64_t)(lapic_timer * 1000) / 250);
@@ -110,11 +110,6 @@ void io_apic_init()
 {
     page_map_range_to(get_kernel_page_dir(), phys_to_virt(ioapic_address), ioapic_address, PAGE_SIZE, KERNEL_PTE_FLAGS);
     ioapic_address = (uint64_t)phys_to_virt(ioapic_address);
-    // ioapic_add((uint8_t)APIC_TIMER_INTERRUPT_VECTOR, 0);
-    // ioapic_add((uint8_t)keyboard, 1);
-    // ioapic_add((uint8_t)mouse, 12);
-    // ioapic_add((uint8_t)ide_primary, 14);
-    // ioapic_add((uint8_t)ide_secondary, 15);
 
     kinfo("Setup I/O apic: %#018lx.", ioapic_address);
 }

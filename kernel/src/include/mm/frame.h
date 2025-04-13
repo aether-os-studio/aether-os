@@ -3,6 +3,8 @@
 #include <klibc.h>
 #include <mm/bitmap.h>
 
+#define MAX_USABLE_REGIONS_COUNT 64
+
 typedef struct
 {
     Bitmap bitmap;

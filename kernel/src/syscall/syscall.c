@@ -31,11 +31,17 @@ void *real_memcpy(void *dst, void *src, long len)
 
 uint64_t switch_to_kernel_stack()
 {
-    return (uint64_t)current_task + PAGE_SIZE;
+    return current_task->syscall_stack;
 }
 
 void syscall_handler(struct pt_regs *regs, struct pt_regs *user_regs)
 {
+    regs->rip = regs->rcx;
+    regs->rflags = regs->r11;
+    regs->cs = SELECTOR_USER_CS;
+    regs->ss = SELECTOR_USER_DS;
+    regs->rsp = (uint64_t)(user_regs + 1);
+
     uint64_t idx = regs->rax;
 
     uint64_t arg1 = regs->rdi;
@@ -57,21 +63,26 @@ void syscall_handler(struct pt_regs *regs, struct pt_regs *user_regs)
     case SYS_GETPID:
         regs->rax = current_task->task_id;
         break;
+    case SYS_FORK:
+        regs->rax = sys_fork(regs);
+        break;
 
     case SYS_SIGNAL:
         regs->rax = sys_signal(arg1, arg2, arg3);
         break;
-
     case SYS_SIGACTION:
         regs->rax = sys_sigaction(arg1, (sigaction_t *)arg2, (sigaction_t *)arg3);
         break;
-
     case SYS_SETMASK:
         regs->rax = sys_ssetmask(arg1);
         break;
-
     case SYS_SENDSIGNAL:
         sys_sendsignal(arg1, arg2);
+        regs->rax = 0;
+        break;
+
+    case SYS_IOPL:
+        sys_iopl(arg1);
         regs->rax = 0;
         break;
 
@@ -123,5 +134,5 @@ void syscall_init()
     wrmsr(MSR_LSTAR, (uint64_t)syscall_exception);
 
     // 4. 设置 SYSCALL_MASK MSR (RFLAGS 掩码)
-    wrmsr(MSR_SYSCALL_MASK, (1 << 9));
+    // wrmsr(MSR_SYSCALL_MASK, (1 << 9));
 }

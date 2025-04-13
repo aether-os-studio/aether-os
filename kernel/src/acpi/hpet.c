@@ -42,8 +42,8 @@ uint64_t nanoTime()
 
 void hpet_setup(Hpet *hpet)
 {
-    hpet_addr = phys_to_virt(hpet->base_address.address);
-    page_map_range_to(get_kernel_page_dir(), hpet_addr, hpet->base_address.address, PAGE_SIZE, KERNEL_PTE_FLAGS);
+    hpet_addr = (HpetInfo *)phys_to_virt(hpet->base_address.address);
+    page_map_range_to(get_kernel_page_dir(), (uint64_t)hpet_addr, hpet->base_address.address, PAGE_SIZE, KERNEL_PTE_FLAGS);
     uint32_t counterClockPeriod = hpet_addr->generalCapabilities >> 32;
     hpetPeriod = counterClockPeriod / 1000000;
     hpet_addr->generalConfiguration |= 1;

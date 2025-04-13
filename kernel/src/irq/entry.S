@@ -22,6 +22,7 @@ GDT_POINTER:
 GDT_LIMIT: .word GDT_END - GDT_Table - 1
 GDT_BASE: .quad GDT_Table
 
+.align 16
 .global IDT_Table
 
 IDT_Table:
@@ -32,8 +33,6 @@ IDT_END:
 IDT_POINTER:
 IDT_LIMIT: .word IDT_END - IDT_Table - 1
 IDT_BASE: .quad IDT_Table
-
-.section .text
 
 R15 =   0x00
 R14 =   0x08
@@ -59,6 +58,8 @@ CS	    =	0xa0
 RFLAGS	=	0xa8
 OLD_RSP	=	0xb0
 OLDSS	=	0xb8
+
+.section .text
 
 Restore_all:
     // === 恢复调用现场 ===
@@ -88,13 +89,12 @@ Restore_all:
 
     iretq
 
-ret_from_exception:
-    // === 从中断中返回 ===
 ENTRY(ret_from_intr)
     call task_signal
 
+ret_from_exception:
+    // === 从中断中返回 ===
     jmp Restore_all
-
     
 Err_Code:
     // ===== 有错误码的情况下，保存寄存器并跳转服务程序
@@ -299,6 +299,13 @@ ENTRY(virtualization_exception)
     xchgq %rax, (%rsp)  // 把FUNC的地址换入栈中
     jmp Err_Code
 
+ENTRY(timer_handler_exception)
+    pushq $0
+    pushq %rax
+    leaq timer_handler(%rip), %rax    // 获取中断服务程序的地址
+    xchgq %rax, (%rsp)  // 把FUNC的地址换入栈中
+    jmp Err_Code
+
 ENTRY(gdtidt_setup)
     lidt IDT_POINTER(%rip)
 
@@ -352,23 +359,23 @@ ENTRY(syscall_exception)
 
     movq %rsp, %r15
 
-    callq switch_to_kernel_stack
-    subq $0xc0, %rax   
+    call switch_to_kernel_stack
+    subq $0xc0, %rax
     movq %rax, %rsp
 
     movq %rsp, %rdi
     movq %r15, %rsi
     movq $0xc0, %rdx
-    callq real_memcpy
+    call real_memcpy
 
     movq %rsp, %rdi
     movq %r15, %rsi
-    callq syscall_handler
+    call syscall_handler
 
     movq %r15, %rdi
     movq %rsp, %rsi
-    movq $0xc0, %rdx 
-    callq real_memcpy
+    movq $0xc0, %rdx
+    call real_memcpy
 
     movq %rax, %rsp
 

@@ -1,8 +1,10 @@
 #include <asm.h>
 #include <klibc.h>
 #include <kprint.h>
+#include <acpi/acpi.h>
 #include <irq/irq.h>
 #include <irq/gate.h>
+#include <task/task.h>
 
 // 保存函数调用现场的寄存器
 #define SAVE_ALL_REGS       \
@@ -74,9 +76,12 @@ Build_IRQ(0x34);
 Build_IRQ(0x35);
 Build_IRQ(0x36);
 Build_IRQ(0x37);
+Build_IRQ(0x38);
+Build_IRQ(0x39);
+Build_IRQ(0x40);
 
 // 初始化中断数组
-void (*interrupt_table[24])(void) =
+void (*interrupt_table[27])(void) =
     {
         IRQ0x20interrupt,
         IRQ0x21interrupt,
@@ -102,21 +107,24 @@ void (*interrupt_table[24])(void) =
         IRQ0x35interrupt,
         IRQ0x36interrupt,
         IRQ0x37interrupt,
+        IRQ0x38interrupt,
+        IRQ0x39interrupt,
+        IRQ0x40interrupt,
 };
 
 void generic_interrupt_table_init()
 {
-    for (int i = 32; i <= 55; ++i)
+    for (int i = 32; i <= 58; ++i)
+    {
         set_intr_gate(i, 0, interrupt_table[i - 32]);
+    }
 }
 
 irq_desc_t interrupt_desc[32];
 
-uint64_t c_do_irq(struct pt_regs *regs, uint8_t irq_num)
+void c_do_irq(struct pt_regs *regs, uint8_t irq_num)
 {
     irq_desc_t *irq = &interrupt_desc[irq_num - 32];
-
-    send_eoi();
 
     if (irq->handler != NULL)
     {
@@ -126,6 +134,21 @@ uint64_t c_do_irq(struct pt_regs *regs, uint8_t irq_num)
     {
         kwarn("Intr vector [%d] does not have a handler!", irq_num);
     }
+
+    cli();
+
+    send_eoi();
+
+    if (current_task->need_schedule)
+    {
+        current_task->need_schedule = false;
+
+        task_t *next = task_search(TASK_READY, current_cpu_id);
+
+        task_switch_to(regs, current_task, next);
+    }
+
+    sti();
 }
 
 int irq_register(uint8_t irq_num, void (*handler)(uint8_t irq_num, uint64_t parameter, struct pt_regs *regs), uint64_t paramater, hardware_intr_controller *controller, char *irq_name)
