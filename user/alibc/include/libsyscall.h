@@ -12,6 +12,7 @@ enum
     SYS_WRITE,
     SYS_OPEN,
     SYS_CLOSE,
+    SYS_IOCTL,
     SYS_SIGACTION,
     SYS_SIGNAL,
     SYS_SETMASK,
@@ -109,6 +110,7 @@ int open(const char *name, int mode, int flags);
 int read(int fd, void *buf, int len);
 int write(int fd, void *buf, int len);
 int close(int fd);
+int ioctl(int fd, int cmd, int arg);
 
 void iopl(uint64_t level);
 
@@ -121,6 +123,15 @@ void load_module(const char *name);
 void get_bootstrap_info(bootstrap_info_t *info);
 
 uint64_t physmap(uint64_t addr, uint64_t size, uint64_t flags);
+
+#include <stdlib.h>
+
+#define SCHEME_NAME_MAX 128
+
+enum
+{
+    SCHEME_IOCTL_GETSIZE = 1,
+};
 
 enum
 {
@@ -144,5 +155,12 @@ typedef struct user_scheme
 {
     user_scheme_command_t command;
 } user_scheme_t;
+
+static inline void init_scheme(user_scheme_t *scheme)
+{
+    memset(scheme, 0, sizeof(user_scheme_t));
+    scheme->command.d = malloc(SCHEME_NAME_MAX);
+    memset((void *)scheme->command.d, 0, SCHEME_NAME_MAX);
+}
 
 void scheme_create(const char *name, user_scheme_t *addr);

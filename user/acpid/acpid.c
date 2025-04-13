@@ -1,6 +1,5 @@
 #include <libdaemon.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include "acpi.h"
 
 user_scheme_t acpid_scheme;
@@ -28,6 +27,36 @@ void *find_table(const char *name)
     return NULL;
 }
 
+uint64_t acpid_read(uint64_t buf, uint64_t len, uint64_t offset, char *target_name)
+{
+    void *ptr = find_table(target_name);
+    if (!ptr)
+        return 0;
+
+    memcpy(buf, ptr, len);
+    return len;
+}
+
+uint64_t acpid_write(uint64_t buf, uint64_t len, uint64_t offset, char *target_name)
+{
+    return (uint64_t)-1;
+}
+
+uint64_t acpid_ioctl(uint64_t cmd, uint64_t arg, uint64_t offset, char *target_name)
+{
+    switch (cmd)
+    {
+    case SCHEME_IOCTL_GETSIZE:
+        struct ACPISDTHeader *ptr = (struct ACPISDTHeader *)find_table(target_name);
+        if (ptr)
+            return ptr->Length;
+    default:
+        break;
+    }
+
+    return 0;
+}
+
 uint64_t acpid_daemon(daemon_t *daemon)
 {
     printf("acpid daemon is running\n");
@@ -47,7 +76,7 @@ uint64_t acpid_daemon(daemon_t *daemon)
     }
     xsdt = (XSDT *)physmap(rsdp->xsdt_address, sizeof(XSDT), PROT_READ | PROT_WRITE);
 
-    memset(&acpid_scheme, 0, sizeof(user_scheme_t));
+    init_scheme(&acpid_scheme);
 
     scheme_create("/scheme/acpid", &acpid_scheme);
 
@@ -57,19 +86,24 @@ uint64_t acpid_daemon(daemon_t *daemon)
     {
         if (acpid_scheme.command.cmd != 0)
         {
+            uint64_t result = 0;
             switch (acpid_scheme.command.cmd)
             {
             case SCHEME_COMMAND_READ:
+                result = acpid_read(acpid_scheme.command.a, acpid_scheme.command.b, acpid_scheme.command.c, (char *)acpid_scheme.command.d);
                 break;
             case SCHEME_COMMAND_WRITE:
+                result = acpid_write(acpid_scheme.command.a, acpid_scheme.command.b, acpid_scheme.command.c, (char *)acpid_scheme.command.d);
                 break;
             case SCHEME_COMMAND_IOCTL:
+                result = acpid_ioctl(acpid_scheme.command.a, acpid_scheme.command.b, acpid_scheme.command.c, (char *)acpid_scheme.command.d);
                 break;
             default:
                 printf("unknown command\n");
                 break;
             }
 
+            acpid_scheme.command.a = result;
             acpid_scheme.command.cmd = 0;
         }
 

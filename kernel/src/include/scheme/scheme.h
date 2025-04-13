@@ -8,6 +8,8 @@
 typedef struct scheme
 {
     char name[SCHEME_NAME_MAX];
+    char target_name[SCHEME_NAME_MAX];
+    uint64_t command_d;
     task_t *task;
     void *user_scheme;
 } scheme_t;
@@ -40,6 +42,7 @@ void scheme_init();
 void scheme_create(const char *name, uint64_t ptr);
 
 scheme_t *scheme_open(const char *name);
+void scheme_close(scheme_t *scheme);
 uint64_t scheme_read(scheme_t *scheme, uint64_t buffer, uint64_t len);
 uint64_t scheme_write(scheme_t *scheme, uint64_t buffer, uint64_t len);
 uint64_t scheme_ioctl(scheme_t *scheme, uint64_t buffer, uint64_t len);

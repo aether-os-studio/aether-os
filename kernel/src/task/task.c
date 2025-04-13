@@ -354,6 +354,9 @@ uint64_t sys_fork(struct pt_regs *regs)
 
     child->need_schedule = false;
 
+    child->brk_start = USER_BRK_START;
+    child->brk_end = USER_BRK_START;
+
     spin_unlock(&fork_lock);
 
     can_schedule = true;

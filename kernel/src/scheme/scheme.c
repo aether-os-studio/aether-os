@@ -19,6 +19,16 @@ void scheme_create(const char *name, uint64_t ptr)
     strncpy(scheme->name, name, SCHEME_NAME_MAX);
     scheme->task = current_task;
     scheme->user_scheme = (void *)translate_addr(get_current_page_dir(), ptr);
+    user_scheme_t *uscheme = phys_to_virt((user_scheme_t *)scheme->user_scheme);
+    user_scheme_command_t *command = &uscheme->command;
+
+    uint64_t command_d = translate_addr(get_current_page_dir(), command->d);
+    if (command_d == 0)
+    {
+        kerror("Invalid user scheme");
+        return;
+    }
+    scheme->command_d = command_d;
 }
 
 scheme_t *scheme_open(const char *name)
@@ -28,13 +38,26 @@ scheme_t *scheme_open(const char *name)
         if (taskid_to_user_schemes[i].name[0] == '\0')
             continue;
 
-        if (!strcmp(name, taskid_to_user_schemes[i].name))
+        if (!strncmp(name, taskid_to_user_schemes[i].name, strlen(taskid_to_user_schemes[i].name)))
         {
-            return &taskid_to_user_schemes[i];
+            uint64_t idx = strlen(taskid_to_user_schemes[i].name) + 1;
+            scheme_t *scheme = &taskid_to_user_schemes[i];
+            if (scheme->target_name[0] != '\0')
+                kwarn("Not closed scheme %s/%s\n", scheme->name, scheme->target_name);
+            strncpy(scheme->target_name, name + idx, SCHEME_NAME_MAX);
+            return scheme;
         }
     }
 
     return NULL;
+}
+
+void scheme_close(scheme_t *scheme)
+{
+    scheme->name[0] = '\0';
+    scheme->target_name[0] = '\0';
+    scheme->task = NULL;
+    scheme->user_scheme = NULL;
 }
 
 uint64_t scheme_transfer(scheme_t *scheme, uint64_t cmd, uint64_t buffer, uint64_t len)
@@ -51,6 +74,8 @@ uint64_t scheme_transfer(scheme_t *scheme, uint64_t cmd, uint64_t buffer, uint64
     command->cmd = cmd;
     command->a = buffer;
     command->b = len;
+
+    strncpy(phys_to_virt((char *)scheme->command_d), scheme->target_name, SCHEME_NAME_MAX);
 
     while (command->cmd)
     {

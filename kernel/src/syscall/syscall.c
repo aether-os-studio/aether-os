@@ -51,7 +51,7 @@ uint64_t sys_physmap(uint64_t addr, uint64_t size, uint64_t flags)
 
 uint64_t sys_brk(uint64_t addr)
 {
-    unsigned long new_brk = (addr + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+    unsigned long new_brk = (addr + PAGE_SIZE - 1) & (~(PAGE_SIZE - 1));
 
     if (new_brk == 0)
         return current_task->brk_start;
@@ -139,8 +139,23 @@ uint64_t sys_write(uint64_t fd, uint64_t buf, uint64_t len)
     return scheme_write(scheme, buf, len);
 }
 
+uint64_t sys_ioctl(uint64_t fd, uint64_t cmd, uint64_t arg)
+{
+    scheme_t *scheme = current_task->schemes[fd];
+    if (scheme == NULL)
+    {
+        return (uint64_t)-EBADF;
+    }
+
+    return scheme_ioctl(scheme, cmd, arg);
+}
+
 uint64_t sys_close(uint64_t fd)
 {
+    if (!current_task->schemes[fd])
+        return (uint64_t)-EBADF;
+
+    scheme_close(current_task->schemes[fd]);
     current_task->schemes[fd] = (scheme_t *)NULL;
 }
 
@@ -243,6 +258,9 @@ void syscall_handler(struct pt_regs *regs, struct pt_regs *user_regs)
         break;
     case SYS_CLOSE:
         regs->rax = sys_close(arg1);
+        break;
+    case SYS_IOCTL:
+        regs->rax = sys_ioctl(arg1, arg2, arg3);
         break;
 
     default:

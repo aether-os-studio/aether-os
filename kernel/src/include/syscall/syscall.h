@@ -8,6 +8,7 @@ enum
     SYS_WRITE,
     SYS_OPEN,
     SYS_CLOSE,
+    SYS_IOCTL,
     SYS_SIGACTION,
     SYS_SIGNAL,
     SYS_SETMASK,

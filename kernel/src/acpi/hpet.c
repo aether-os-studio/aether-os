@@ -6,8 +6,6 @@
 HpetInfo *hpet_addr;
 static uint32_t hpetPeriod = 0;
 
-extern void save_registers(); // switch.S
-
 void usleep(uint64_t nano)
 {
     uint64_t targetTime = nanoTime();

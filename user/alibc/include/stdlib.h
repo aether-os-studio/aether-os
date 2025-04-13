@@ -1,5 +1,7 @@
 #pragma once
 
+#include <libsyscall.h>
+
 static inline void *memcpy(void *To, void *From, long Num)
 {
     int d0, d1, d2;
@@ -211,3 +213,6 @@ static inline int strlen(char *String)
                          :);
     return __res;
 }
+
+void *malloc(size_t size);
+void free(void *ptr);

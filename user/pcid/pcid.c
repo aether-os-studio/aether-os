@@ -8,18 +8,20 @@ uint64_t pcid_daemon(daemon_t *daemon)
 {
     printf("pcid daemon is running\n");
 
-    memset(&pcid_daemon, 0, sizeof(user_scheme_t));
+    init_scheme(&pcid_scheme);
 
     scheme_create("/scheme/pcid", &pcid_scheme);
 
     finish_daemon(daemon);
 
-    int fd = open("/scheme/acpid", 0, 0);
+    int fd = open("/scheme/acpid/MCFG", 0, 0);
     if (fd < 0)
     {
         printf("open acpid scheme failed\n");
         return -1;
     }
+
+    close(fd);
 
     while (1)
     {
