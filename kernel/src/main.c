@@ -37,6 +37,7 @@ void sse_init()
 #include <irq/gate.h>
 #include <irq/trap.h>
 #include <syscall/syscall.h>
+#include <scheme/scheme.h>
 #include <task/fsgsbase.h>
 #include <task/task.h>
 
@@ -64,6 +65,8 @@ void kmain(void)
     smp_init();
 
     syscall_init();
+
+    scheme_init();
 
     tss_init();
     fsgsbase_init();

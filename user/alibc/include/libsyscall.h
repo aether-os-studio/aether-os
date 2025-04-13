@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+#include <errno.h>
+
 enum
 {
     SYS_READ = 1,
@@ -24,7 +26,10 @@ enum
 
     SYS_GET_INFO,
 
+    SYS_BRK,
     SYS_PHYSMAP,
+
+    SYS_SCHEME_CREATE,
 
     SYS_NUM,
 };
@@ -100,8 +105,10 @@ void send_signal(int pid, int sig);
 int getpid();
 int getppid();
 
+int open(const char *name, int mode, int flags);
 int read(int fd, void *buf, int len);
 int write(int fd, void *buf, int len);
+int close(int fd);
 
 void iopl(uint64_t level);
 
@@ -114,3 +121,28 @@ void load_module(const char *name);
 void get_bootstrap_info(bootstrap_info_t *info);
 
 uint64_t physmap(uint64_t addr, uint64_t size, uint64_t flags);
+
+enum
+{
+    SCHEME_COMMAND_READ = 1,
+    SCHEME_COMMAND_WRITE,
+    SCHEME_COMMAND_IOCTL,
+};
+
+typedef struct user_scheme_command
+{
+    uint64_t cmd;
+    uint64_t a;
+    uint64_t b;
+    uint64_t c;
+    uint64_t d;
+    uint64_t e;
+    uint64_t f;
+} user_scheme_command_t;
+
+typedef struct user_scheme
+{
+    user_scheme_command_t command;
+} user_scheme_t;
+
+void scheme_create(const char *name, user_scheme_t *addr);

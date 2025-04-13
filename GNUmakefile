@@ -135,6 +135,7 @@ $(IMAGE_NAME).iso: limine/limine kernel user
 	mkdir -p iso_root/usr/bin
 	cp -v user/init/initd.exec iso_root/usr/bin
 	cp -v user/acpid/acpid.exec iso_root/usr/bin
+	cp -v user/pcid/pcid.exec iso_root/usr/bin
 	xorriso -as mkisofs -R -r -J -b boot/limine/limine-bios-cd.bin \
 		-no-emul-boot -boot-load-size 4 -boot-info-table -hfsplus \
 		-apm-block-size 2048 --efi-boot boot/limine/limine-uefi-cd.bin \
@@ -156,6 +157,7 @@ $(IMAGE_NAME).hdd: limine/limine kernel user
 	mcopy -i $(IMAGE_NAME).hdd@@1M limine/BOOTIA32.EFI ::/EFI/BOOT
 	mcopy -i $(IMAGE_NAME).hdd@@1M user/init/initd.exec ::/usr/bin
 	mcopy -i $(IMAGE_NAME).hdd@@1M user/acpid/acpid.exec ::/usr/bin
+	mcopy -i $(IMAGE_NAME).hdd@@1M user/pcid/pcid.exec ::/usr/bin
 
 .PHONY: clean
 clean:

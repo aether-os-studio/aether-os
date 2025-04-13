@@ -22,7 +22,10 @@ enum
 
     SYS_GET_INFO,
 
+    SYS_BRK,
     SYS_PHYSMAP,
+
+    SYS_SCHEME_CREATE,
 
     SYS_NUM,
 };

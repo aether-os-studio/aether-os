@@ -123,6 +123,9 @@ task_t *task_create(const char *name, void (*entry)(), uint64_t uid)
     task->need_schedule = false;
     task->userspace_io_allowed = false;
 
+    task->brk_start = USER_BRK_START;
+    task->brk_end = USER_BRK_START;
+
     task->uid = uid;
 
     task->status = 0;

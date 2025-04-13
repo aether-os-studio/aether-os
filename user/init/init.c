@@ -17,7 +17,17 @@ int main()
     else
     {
         waitpid(child_pid, &status);
-        printf("acpid process exited, status = %d\n", status);
+    }
+
+    child_pid = fork();
+    if (child_pid == 0)
+    {
+        // write(1, "Child process\n", 14);
+        load_module("/usr/bin/pcid.exec");
+    }
+    else
+    {
+        waitpid(child_pid, &status);
     }
 
     while (1)

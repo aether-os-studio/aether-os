@@ -6,6 +6,7 @@ all:
 
 	$(MAKE) -C init
 	$(MAKE) -C acpid
+	$(MAKE) -C pcid
 
 clean:
 	rm -rf obj

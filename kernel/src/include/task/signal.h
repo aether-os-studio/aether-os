@@ -30,7 +30,7 @@ enum SIGNAL
 };
 
 #define MINSIG 1
-#define MAXSIG 31
+#define MAXSIG 63
 
 #define SIGMASK(sig) (1UL << (sig - 1))
 
@@ -51,6 +51,7 @@ typedef struct sigaction_t
     void (*handler)(int); // 信号处理函数
     sigset_t mask;        // 信号屏蔽码
     uint64_t flags;
+    uint64_t arg;           // 传递给信号处理函数的参数
     void (*restorer)(void); // 恢复函数指针
 } sigaction_t;
 

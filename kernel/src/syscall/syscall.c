@@ -6,18 +6,7 @@
 #include <task/signal.h>
 #include <acpi/acpi.h>
 #include <mm/hhdm.h>
-
-uint64_t sys_write(uint64_t fd, uint64_t buf, uint64_t len)
-{
-    if (fd == 1)
-    {
-        printk("%s", (char *)buf);
-    }
-    else if (fd == 2)
-    {
-        printk_color(RED, BLACK, "%s", (char *)buf);
-    }
-}
+#include <scheme/scheme.h>
 
 uint64_t sys_exit(uint64_t code)
 {
@@ -60,6 +49,27 @@ uint64_t sys_physmap(uint64_t addr, uint64_t size, uint64_t flags)
     return vaddr;
 }
 
+uint64_t sys_brk(uint64_t addr)
+{
+    unsigned long new_brk = (addr + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+
+    if (new_brk == 0)
+        return current_task->brk_start;
+    if (new_brk < current_task->brk_end)
+        return 0;
+
+    uint64_t start = current_task->brk_end;
+    uint64_t size = new_brk - current_task->brk_end;
+
+    page_map_range_to(get_current_page_dir(), start, 0, size, USER_PTE_FLAGS);
+
+    new_brk = start + size;
+
+    current_task->brk_end = new_brk;
+
+    return new_brk;
+}
+
 extern volatile struct limine_framebuffer_request framebuffer_request;
 
 void sys_get_info(bootstrap_info_t *info)
@@ -78,6 +88,60 @@ void sys_get_info(bootstrap_info_t *info)
     info->blue_mask_size = framebuffer->blue_mask_size;
     info->green_mask_shift = framebuffer->green_mask_shift;
     info->green_mask_size = framebuffer->green_mask_size;
+}
+
+uint64_t sys_open(const char *name, uint64_t mode, uint64_t flags)
+{
+    uint64_t i;
+    for (i = 3; i < MAX_FD_NUM; i++)
+    {
+        if (current_task->schemes[i] == NULL)
+            break;
+    }
+
+    scheme_t *scheme = scheme_open(name);
+    if (!scheme)
+        return (uint64_t)-ENOENT;
+
+    current_task->schemes[i] = scheme;
+
+    return i;
+}
+
+uint64_t sys_read(uint64_t fd, uint64_t buf, uint64_t len)
+{
+    scheme_t *scheme = current_task->schemes[fd];
+    if (scheme == NULL)
+    {
+        return (uint64_t)-EBADF;
+    }
+
+    return scheme_read(scheme, buf, len);
+}
+
+uint64_t sys_write(uint64_t fd, uint64_t buf, uint64_t len)
+{
+    if (fd == 1)
+    {
+        printk("%s", (char *)buf);
+    }
+    else if (fd == 2)
+    {
+        printk_color(RED, BLACK, "%s", (char *)buf);
+    }
+
+    scheme_t *scheme = current_task->schemes[fd];
+    if (scheme == NULL)
+    {
+        return (uint64_t)-EBADF;
+    }
+
+    return scheme_write(scheme, buf, len);
+}
+
+uint64_t sys_close(uint64_t fd)
+{
+    current_task->schemes[fd] = (scheme_t *)NULL;
 }
 
 extern void sys_load_module(const char *);
@@ -111,10 +175,6 @@ void syscall_handler(struct pt_regs *regs, struct pt_regs *user_regs)
 
     switch (idx)
     {
-    case SYS_WRITE:
-        regs->rax = sys_write(arg1, arg2, arg3);
-        break;
-
     case SYS_EXIT:
         regs->rax = sys_exit(arg1);
         break;
@@ -160,8 +220,29 @@ void syscall_handler(struct pt_regs *regs, struct pt_regs *user_regs)
         regs->rax = 0;
         break;
 
+    case SYS_BRK:
+        regs->rax = sys_brk(arg1);
+        break;
     case SYS_PHYSMAP:
         regs->rax = sys_physmap(arg1, arg2, arg3);
+        break;
+
+    case SYS_SCHEME_CREATE:
+        scheme_create((const char *)arg1, arg2);
+        regs->rax = 0;
+        break;
+
+    case SYS_OPEN:
+        regs->rax = sys_open((const char *)arg1, arg2, arg3);
+        break;
+    case SYS_READ:
+        regs->rax = sys_read(arg1, arg2, arg3);
+        break;
+    case SYS_WRITE:
+        regs->rax = sys_write(arg1, arg2, arg3);
+        break;
+    case SYS_CLOSE:
+        regs->rax = sys_close(arg1);
         break;
 
     default:

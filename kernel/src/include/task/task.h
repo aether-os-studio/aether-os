@@ -54,6 +54,11 @@ typedef struct task_thread
     uint64_t gsbase;
 } task_thread_t;
 
+#define MAX_FD_NUM 16
+
+struct scheme;
+typedef struct scheme scheme_t;
+
 typedef struct task
 {
     uint64_t self_ref;
@@ -64,12 +69,15 @@ typedef struct task
     uint64_t syscall_stack;
     uint64_t uid;
     uint64_t on_cpu;
+    uint64_t brk_start;
+    uint64_t brk_end;
     struct List list;
     struct pt_regs *context;
     uint64_t jiffies;
     page_directory_t *pgdir;
     task_thread_t *thread;
     task_state_t state;
+    scheme_t *schemes[MAX_FD_NUM];
     int status;
     sigaction_t actions[MAXSIG];
     uint64_t signal;

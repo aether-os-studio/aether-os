@@ -54,6 +54,16 @@ int write(int fd, void *buf, int len)
     return enter_syscall(SYS_WRITE, (uint64_t)fd, (uint64_t)buf, (uint64_t)len, 0, 0, 0);
 }
 
+int open(const char *name, int mode, int flags)
+{
+    return enter_syscall(SYS_OPEN, (uint64_t)name, mode, flags, 0, 0, 0);
+}
+
+int close(int fd)
+{
+    return enter_syscall(SYS_CLOSE, (uint64_t)fd, 0, 0, 0, 0, 0);
+}
+
 int fork()
 {
     return (int)enter_syscall(SYS_FORK, 0, 0, 0, 0, 0, 0);
@@ -82,4 +92,9 @@ void get_bootstrap_info(bootstrap_info_t *info)
 uint64_t physmap(uint64_t addr, uint64_t size, uint64_t flags)
 {
     return enter_syscall(SYS_PHYSMAP, addr, size, flags, 0, 0, 0);
+}
+
+void scheme_create(const char *name, user_scheme_t *addr)
+{
+    enter_syscall(SYS_SCHEME_CREATE, (uint64_t)name, (uint64_t)addr, 0, 0, 0, 0);
 }
