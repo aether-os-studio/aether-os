@@ -1,5 +1,9 @@
 #pragma once
 
+#include <stdint.h>
+#include <stddef.h>
+#include <stdbool.h>
+
 enum
 {
     SYS_READ = 1,
@@ -12,6 +16,7 @@ enum
     SYS_SENDSIGNAL,
     SYS_EXIT,
     SYS_GETPID,
+    SYS_GETPPID,
     SYS_FORK,
     SYS_WAITPID,
     SYS_LOAD_MODULE,
@@ -19,11 +24,6 @@ enum
 
     SYS_NUM,
 };
-
-typedef unsigned char uint8_t;
-typedef unsigned short uint16_t;
-typedef unsigned int uint32_t;
-typedef unsigned long long uint64_t;
 
 uint64_t enter_syscall(uint64_t idx, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t arg4, uint64_t arg5, uint64_t arg6);
 
@@ -74,6 +74,7 @@ int sigaction(int sg, sigaction_t *act, sigaction_t *oldact);
 void send_signal(int pid, int sig);
 
 int getpid();
+int getppid();
 
 int read(int fd, void *buf, int len);
 int write(int fd, void *buf, int len);

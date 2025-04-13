@@ -65,6 +65,9 @@ void syscall_handler(struct pt_regs *regs, struct pt_regs *user_regs)
     case SYS_GETPID:
         regs->rax = current_task->task_id;
         break;
+    case SYS_GETPPID:
+        regs->rax = current_task->parent_task_id;
+        break;
     case SYS_FORK:
         regs->rax = sys_fork(regs);
         break;

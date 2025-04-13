@@ -39,6 +39,11 @@ int getpid()
     return enter_syscall(SYS_GETPID, 0, 0, 0, 0, 0, 0);
 }
 
+int getppid()
+{
+    return enter_syscall(SYS_GETPPID, 0, 0, 0, 0, 0, 0);
+}
+
 int read(int fd, void *buf, int len)
 {
     return enter_syscall(SYS_READ, (uint64_t)fd, (uint64_t)buf, (uint64_t)len, 0, 0, 0);

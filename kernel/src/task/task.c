@@ -244,7 +244,7 @@ void task_exit(int code)
         return;
     }
 
-    kinfo("task %s %#018lx exit......", current_task->name, current_task);
+    // kinfo("task %s %#018lx exit......", current_task->name, current_task);
 
     current_task->state = TASK_DIED;
 
