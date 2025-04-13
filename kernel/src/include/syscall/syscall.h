@@ -25,6 +25,7 @@ enum
 
     SYS_BRK,
     SYS_PHYSMAP,
+    SYS_VIRTTOPHYS,
 
     SYS_SCHEME_CREATE,
 

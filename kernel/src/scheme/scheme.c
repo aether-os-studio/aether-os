@@ -72,7 +72,23 @@ uint64_t scheme_transfer(scheme_t *scheme, uint64_t cmd, uint64_t buffer, uint64
     user_scheme_command_t *command = &uscheme->command;
 
     command->cmd = cmd;
-    command->a = buffer;
+    if (cmd == SCHEME_COMMAND_READ || cmd == SCHEME_COMMAND_WRITE)
+    {
+        uint64_t buffer_phys = translate_addr(get_current_page_dir(), buffer);
+        if (buffer_phys == 0)
+        {
+            kerror("Invalid buffer address");
+            return (uint64_t)-EINVAL;
+        }
+
+        page_map_range_to(scheme->task->pgdir, buffer_phys, buffer_phys, PAGE_SIZE, USER_PTE_FLAGS);
+
+        command->a = buffer_phys;
+    }
+    else
+    {
+        command->a = buffer;
+    }
     command->b = len;
 
     strncpy(phys_to_virt((char *)scheme->command_d), scheme->target_name, SCHEME_NAME_MAX);

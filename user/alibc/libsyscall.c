@@ -103,3 +103,8 @@ void scheme_create(const char *name, user_scheme_t *addr)
 {
     enter_syscall(SYS_SCHEME_CREATE, (uint64_t)name, (uint64_t)addr, 0, 0, 0, 0);
 }
+
+uint64_t virttophys(uint64_t virt)
+{
+    return enter_syscall(SYS_VIRTTOPHYS, virt, 0, 0, 0, 0, 0);
+}

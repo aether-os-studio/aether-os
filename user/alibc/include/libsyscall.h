@@ -29,6 +29,7 @@ enum
 
     SYS_BRK,
     SYS_PHYSMAP,
+    SYS_VIRTTOPHYS,
 
     SYS_SCHEME_CREATE,
 
@@ -117,6 +118,8 @@ void iopl(uint64_t level);
 int fork();
 
 int waitpid(int pid, int *status);
+
+uint64_t virttophys(uint64_t virt);
 
 void load_module(const char *name);
 

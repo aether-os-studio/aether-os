@@ -241,6 +241,9 @@ void syscall_handler(struct pt_regs *regs, struct pt_regs *user_regs)
     case SYS_PHYSMAP:
         regs->rax = sys_physmap(arg1, arg2, arg3);
         break;
+    case SYS_VIRTTOPHYS:
+        regs->rax = translate_addr(get_current_page_dir(), arg1);
+        break;
 
     case SYS_SCHEME_CREATE:
         scheme_create((const char *)arg1, arg2);

@@ -1,6 +1,7 @@
 #include <libdaemon.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "mcfg.h"
 
 user_scheme_t pcid_scheme;
 
@@ -20,6 +21,21 @@ uint64_t pcid_daemon(daemon_t *daemon)
         printf("open acpid scheme failed\n");
         return -1;
     }
+
+    int len = ioctl(fd, SCHEME_IOCTL_GETSIZE, 0);
+    if (len < 0)
+    {
+        printf("ioctl failed\n");
+        close(fd);
+        return -1;
+    }
+
+    MCFG *buf = (MCFG *)malloc(len);
+    memset(buf, 0, len);
+
+    read(fd, buf, len);
+
+    printf("MCFG Signature = %s", buf->Header.Signature);
 
     close(fd);
 
