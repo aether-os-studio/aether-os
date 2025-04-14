@@ -44,6 +44,8 @@ uint64_t blkd_read(uint64_t buf, uint64_t len, uint64_t offset, char *target_nam
 
         return ret;
     }
+
+    return 0;
 }
 
 uint64_t blkd_write(uint64_t buf, uint64_t len, uint64_t offset, char *target_name)
@@ -73,12 +75,43 @@ uint64_t blkd_write(uint64_t buf, uint64_t len, uint64_t offset, char *target_na
 
         return ret;
     }
+
+    return 0;
 }
 
 uint64_t blkd_ioctl(uint64_t cmd, uint64_t arg, uint64_t offset, char *target_name)
 {
     switch (cmd)
     {
+    case SCHEME_IOCTL_GETBLKSIZE:
+    {
+        // 只支持MAX_BLKDEV_NUM个块设备
+        if (is_digit(target_name[0]))
+        {
+            uint8_t idx = target_name[0] - '0';
+            if (idx >= MAX_BLKDEV_NUM)
+            {
+                return (uint64_t)-EINVAL;
+            }
+
+            blkdev_t *dev = &blk_devs[idx];
+
+            int fd = open(dev->dev_scheme_name, 0, 0);
+            if (fd < 0)
+            {
+                printf("Cannot get blkdev scheme");
+                close(fd);
+                return (uint64_t)-EBADF;
+            }
+
+            int ret = ioctl(fd, cmd, arg);
+
+            close(fd);
+
+            return ret;
+        }
+    }
+    break;
     case SCHEME_IOCTL_REGIST_BLKDEV:
     {
         char *blkdev_name = target_name;

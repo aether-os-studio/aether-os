@@ -81,7 +81,7 @@ ifeq ($(SUDO), 1)
 	sudo qemu-system-x86_64 \
 		-M q35 \
 		-drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-code-x86_64.fd,readonly=on \
-		-drive if=none,file=$(IMAGE_NAME).iso,format=raw,id=harddisk \
+		-drive if=none,file=$(IMAGE_NAME).hdd,format=raw,id=harddisk \
 		-boot d \
 		-device ahci,id=ahci \
 		-device ide-hd,drive=harddisk,bus=ahci.0 \
@@ -90,7 +90,7 @@ else
 	sudo qemu-system-x86_64 \
 		-M q35 \
 		-drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-code-x86_64.fd,readonly=on \
-		-drive if=none,file=$(IMAGE_NAME).iso,format=raw,id=harddisk \
+		-drive if=none,file=$(IMAGE_NAME).hdd,format=raw,id=harddisk \
 		-boot d \
 		-device ahci,id=ahci \
 		-device ide-hd,drive=harddisk,bus=ahci.0 \
@@ -103,7 +103,7 @@ ifeq ($(SUDO), 1)
 	sudo qemu-system-x86_64 \
 		-M q35 \
 		-drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-code-x86_64.fd,readonly=on \
-		-drive if=none,file=$(IMAGE_NAME).iso,format=raw,id=harddisk \
+		-drive if=none,file=$(IMAGE_NAME).hdd,format=raw,id=harddisk \
 		-boot d \
 		-device ahci,id=ahci \
 		-device ide-hd,drive=harddisk,bus=ahci.0 \
@@ -112,7 +112,7 @@ else
 	qemu-system-x86_64 \
 		-M q35 \
 		-drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-code-x86_64.fd,readonly=on \
-		-drive if=none,file=$(IMAGE_NAME).iso,format=raw,id=harddisk \
+		-drive if=none,file=$(IMAGE_NAME).hdd,format=raw,id=harddisk \
 		-boot d \
 		-device ahci,id=ahci \
 		-device ide-hd,drive=harddisk,bus=ahci.0 \
@@ -160,6 +160,7 @@ $(IMAGE_NAME).iso: limine/limine kernel user
 	cp -v user/pcid/pcid.exec iso_root/usr/bin
 	cp -v user/blkd/blkd.exec iso_root/usr/bin
 	cp -v user/ahcid/ahcid.exec iso_root/usr/bin
+	cp -v user/fsd/fsd.exec iso_root/usr/bin
 	xorriso -as mkisofs -R -r -J -b boot/limine/limine-bios-cd.bin \
 		-no-emul-boot -boot-load-size 4 -boot-info-table -hfsplus \
 		-apm-block-size 2048 --efi-boot boot/limine/limine-uefi-cd.bin \
@@ -184,6 +185,7 @@ $(IMAGE_NAME).hdd: limine/limine kernel user
 	mcopy -i $(IMAGE_NAME).hdd@@1M user/pcid/pcid.exec ::/usr/bin
 	mcopy -i $(IMAGE_NAME).hdd@@1M user/blkd/blkd.exec ::/usr/bin
 	mcopy -i $(IMAGE_NAME).hdd@@1M user/ahcid/ahcid.exec ::/usr/bin
+	mcopy -i $(IMAGE_NAME).hdd@@1M user/fsd/fsd.exec ::/usr/bin
 
 .PHONY: clean
 clean:

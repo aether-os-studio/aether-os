@@ -3,6 +3,8 @@
 #include <libsyscall.h>
 #include <io.h>
 
+typedef uint32_t hba_reg_t;
+
 #define HBA_RCAP 0
 #define HBA_RGHC 1
 #define HBA_RIS 2
@@ -10,7 +12,7 @@
 #define HBA_RVER 4
 
 #define HBA_RPBASE (0x40)
-#define HBA_RPSIZE (0x80 >> 2)
+#define HBA_RPSIZE (0x80 / sizeof(hba_reg_t))
 #define HBA_RPxCLB 0
 #define HBA_RPxFB 2
 #define HBA_RPxIS 4
@@ -63,8 +65,6 @@
 
 #define __HBA_PACKED__ __attribute__((packed))
 
-typedef uint32_t hba_reg_t;
-
 #define HBA_CMDH_FIS_LEN(fis_bytes) (((fis_bytes) / 4) & 0x1f)
 #define HBA_CMDH_ATAPI (1 << 5)
 #define HBA_CMDH_WRITE (1 << 6)
@@ -79,9 +79,10 @@ struct hba_cmdh
 {
     uint16_t options;
     uint16_t prdt_len;
-    uint32_t transferred_size;
+    volatile uint32_t transferred_size;
     uint32_t cmd_table_base;
-    uint32_t reserved[5];
+    uint32_t cmd_table_base_upper;
+    uint32_t reserved[4];
 } __HBA_PACKED__;
 
 #define HBA_PRDTE_BYTE_CNT(cnt) ((cnt & 0x3FFFFF) | 0x1)
@@ -89,8 +90,11 @@ struct hba_cmdh
 struct hba_prdte
 {
     uint32_t data_base;
-    uint32_t reserved[2];
-    uint32_t byte_count;
+    uint32_t data_base_upper;
+    uint32_t reserved;
+    uint32_t byte_count : 22;
+    uint32_t rsv1 : 9;
+    uint32_t i : 1;
 } __HBA_PACKED__;
 
 struct hba_cmdt

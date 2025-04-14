@@ -8,6 +8,7 @@ enum
     SYS_WRITE,
     SYS_OPEN,
     SYS_CLOSE,
+    SYS_LSEEK,
     SYS_IOCTL,
     SYS_SIGACTION,
     SYS_SIGNAL,

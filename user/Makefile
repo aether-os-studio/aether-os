@@ -9,6 +9,7 @@ all:
 	$(MAKE) -C pcid
 	$(MAKE) -C blkd
 	$(MAKE) -C ahcid
+	$(MAKE) -C fsd
 
 clean:
-	rm -rf $(shell find . -name "*.o") obj/
+	rm -rf $(shell find . -name "*.o") $(shell find . -name "*.exec") obj/

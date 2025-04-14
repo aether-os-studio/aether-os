@@ -11,7 +11,7 @@ struct blkio_req
     uint64_t flags;
 };
 
-// blkio->flags
+// blkio_req->flags
 #define BLKIO_WRITE (1UL << 0)
 
 #define ICEIL(x, y) ((x) / (y) + ((x) % (y) != 0))

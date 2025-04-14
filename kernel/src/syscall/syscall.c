@@ -140,6 +140,19 @@ uint64_t sys_write(uint64_t fd, uint64_t buf, uint64_t len)
     return scheme_write(scheme, buf, len);
 }
 
+uint64_t sys_lseek(uint64_t fd, uint64_t offset)
+{
+    scheme_t *scheme = current_task->schemes[fd];
+    if (scheme == NULL)
+    {
+        return (uint64_t)-EBADF;
+    }
+
+    scheme->offset = offset;
+
+    return offset;
+}
+
 uint64_t sys_ioctl(uint64_t fd, uint64_t cmd, uint64_t arg)
 {
     scheme_t *scheme = current_task->schemes[fd];
@@ -262,6 +275,9 @@ void syscall_handler(struct pt_regs *regs, struct pt_regs *user_regs)
         break;
     case SYS_CLOSE:
         regs->rax = sys_close(arg1);
+        break;
+    case SYS_LSEEK:
+        regs->rax = sys_lseek(arg1, arg2);
         break;
     case SYS_IOCTL:
         regs->rax = sys_ioctl(arg1, arg2, arg3);

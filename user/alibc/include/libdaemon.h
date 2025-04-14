@@ -2,6 +2,12 @@
 
 #include <libsyscall.h>
 
+#define wait_until(cond) \
+    ({                   \
+        while (!(cond))  \
+            ;            \
+    })
+
 #define wait_until_expire(cond, max)          \
     ({                                        \
         uint32_t __wcounter__ = (max);        \

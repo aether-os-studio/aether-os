@@ -12,6 +12,7 @@ enum
     SYS_WRITE,
     SYS_OPEN,
     SYS_CLOSE,
+    SYS_LSEEK,
     SYS_IOCTL,
     SYS_SIGACTION,
     SYS_SIGNAL,
@@ -114,6 +115,7 @@ int open(const char *name, int mode, int flags);
 int read(int fd, void *buf, int len);
 int write(int fd, void *buf, int len);
 int close(int fd);
+int lseek(int fd, int offset);
 int ioctl(int fd, int cmd, int arg);
 
 void iopl(uint64_t level);
@@ -167,7 +169,7 @@ typedef struct user_scheme
 static inline void init_scheme(user_scheme_t *scheme)
 {
     memset(scheme, 0, sizeof(user_scheme_t));
-    scheme->command.d = malloc(SCHEME_NAME_MAX);
+    scheme->command.d = (uint64_t)malloc(SCHEME_NAME_MAX);
     memset((void *)scheme->command.d, 0, SCHEME_NAME_MAX);
 }
 

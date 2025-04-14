@@ -64,6 +64,11 @@ int close(int fd)
     return enter_syscall(SYS_CLOSE, (uint64_t)fd, 0, 0, 0, 0, 0);
 }
 
+int lseek(int fd, int offset)
+{
+    return enter_syscall(SYS_LSEEK, (uint64_t)fd, (uint64_t)offset, 0, 0, 0, 0);
+}
+
 int ioctl(int fd, int cmd, int arg)
 {
     return enter_syscall(SYS_IOCTL, fd, cmd, arg, 0, 0, 0);

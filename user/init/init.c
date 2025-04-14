@@ -52,6 +52,17 @@ int main()
         waitpid(child_pid, &status);
     }
 
+    child_pid = fork();
+    if (child_pid == 0)
+    {
+        load_module("/usr/bin/fsd.exec");
+        exit(-1);
+    }
+    else
+    {
+        waitpid(child_pid, &status);
+    }
+
     while (1)
     {
         __asm__ __volatile__("pause");

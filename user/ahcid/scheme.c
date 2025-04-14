@@ -23,12 +23,15 @@ uint64_t ahcid_read(uint64_t buf, uint64_t len, uint64_t offset, char *target_na
         }
 
         struct blkio_req req;
+        memset(&req, 0, sizeof(struct blkio_req));
 
-        req.buf = virttophys(buf);
-        req.lba = offset;
+        req.buf = (uint64_t)op_buffer;
+        req.lba = offset / device->block_size;
         req.len = len;
 
         device->ops.submit(device, &req);
+
+        memcpy((void *)buf, op_buffer, len);
 
         return len;
     }
@@ -57,11 +60,14 @@ uint64_t ahcid_write(uint64_t buf, uint64_t len, uint64_t offset, char *target_n
         struct hba_device *device = drv->hba.ports[idx]->device;
 
         struct blkio_req req;
+        memset(&req, 0, sizeof(struct blkio_req));
 
         req.flags |= BLKIO_WRITE;
 
-        req.buf = virttophys(buf);
-        req.lba = offset;
+        memcpy(op_buffer, (void *)buf, len);
+
+        req.buf = (uint64_t)op_buffer;
+        req.lba = offset / device->block_size;
         req.len = len;
 
         device->ops.submit(device, &req);

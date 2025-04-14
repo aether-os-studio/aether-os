@@ -55,10 +55,7 @@ scheme_t *scheme_open(const char *name)
 
 void scheme_close(scheme_t *scheme)
 {
-    scheme->name[0] = '\0';
     scheme->target_name[0] = '\0';
-    scheme->task = NULL;
-    scheme->user_scheme = NULL;
 }
 
 uint64_t scheme_transfer(scheme_t *scheme, uint64_t cmd, uint64_t buffer, uint64_t len)
@@ -81,7 +78,7 @@ uint64_t scheme_transfer(scheme_t *scheme, uint64_t cmd, uint64_t buffer, uint64
             return (uint64_t)-EINVAL;
         }
 
-        page_map_range_to(scheme->task->pgdir, buffer_phys, buffer_phys, PAGE_SIZE, USER_PTE_FLAGS);
+        page_map_range_to(scheme->task->pgdir, buffer_phys, buffer_phys, len, USER_PTE_FLAGS);
 
         command->a = buffer_phys;
     }
