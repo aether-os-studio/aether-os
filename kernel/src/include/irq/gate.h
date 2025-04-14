@@ -1,6 +1,7 @@
 #pragma once
 
 #include <klibc.h>
+#include <task/task.h>
 
 // 描述符表的结构体
 struct desc_struct
@@ -47,10 +48,13 @@ extern unsigned int TSS64_Table[26];
                              : "memory");                                                              \
     } while (0)
 
+#define IOBITMAP_SIZE (65536 / 8)
+#define TSS_SIZE (sizeof(tss_t) + IOBITMAP_SIZE)
+
 static inline void set_tss_descriptor(unsigned int n, void *addr)
 {
 
-    uint64_t limit = 103;
+    uint64_t limit = TSS_SIZE;
     *(uint64_t *)(&GDT_Table[n]) = (limit & 0xffff) | (((uint64_t)addr & 0xffff) << 16) | ((((uint64_t)addr >> 16) & 0xff) << 32) | ((uint64_t)0x89 << 40) | ((limit >> 16 & 0xf) << 48) | (((uint64_t)addr >> 24 & 0xff) << 56); /////89 is attribute
     *(uint64_t *)(&GDT_Table[n + 1]) = (((uint64_t)addr >> 32) & 0xffffffff) | 0;
 }

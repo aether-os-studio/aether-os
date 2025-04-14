@@ -71,7 +71,6 @@ uint64_t scheme_transfer(scheme_t *scheme, uint64_t cmd, uint64_t buffer, uint64
     uscheme = phys_to_virt(uscheme);
     user_scheme_command_t *command = &uscheme->command;
 
-    command->cmd = cmd;
     if (cmd == SCHEME_COMMAND_READ || cmd == SCHEME_COMMAND_WRITE)
     {
         uint64_t buffer_phys = translate_addr(get_current_page_dir(), buffer);
@@ -92,6 +91,8 @@ uint64_t scheme_transfer(scheme_t *scheme, uint64_t cmd, uint64_t buffer, uint64
     command->b = len;
 
     strncpy(phys_to_virt((char *)scheme->command_d), scheme->target_name, SCHEME_NAME_MAX);
+
+    command->cmd = cmd;
 
     while (command->cmd)
     {

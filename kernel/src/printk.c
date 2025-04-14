@@ -37,7 +37,7 @@ int printk_init(const int char_size_x, const int char_size_y)
     pos.max_y = calculate_max_charNum(pos.height, char_size_y);
 
     pos.FB_address = (uint32_t *)framebuffer->address;
-    pos.FB_length = pos.width * pos.height * sizeof(uint32_t);
+    pos.FB_length = pos.width * pos.height;
 
     pos.x = 0;
     pos.y = 0;
@@ -76,21 +76,15 @@ int skip_and_atoi(const char **s)
 
 void auto_newline()
 {
-    /**
-     * @brief 超过每行最大字符数，自动换行
-     *
-     */
     if (pos.x > pos.max_x)
     {
         pos.x = 0;
-        ++pos.y;
+        pos.y++;
     }
     if (pos.y > pos.max_y)
     {
         pos.y = pos.max_y;
-        int lines_to_scroll = 1;
-        scroll(true, lines_to_scroll * pos.char_size_y, false);
-        pos.y -= (lines_to_scroll - 1);
+        scroll(true, pos.char_size_y, false);
     }
 }
 
@@ -643,7 +637,7 @@ int printk_color(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
         if (current == '\n')
         {
             pos.x = 0;
-            ++pos.y;
+            pos.y++;
             auto_newline();
         }
         else if (current == '\t') // 输出制表符
@@ -653,14 +647,14 @@ int printk_color(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ..
             while (space_to_print--)
             {
                 putchar(pos.FB_address, pos.width, pos.x * pos.char_size_x, pos.y * pos.char_size_y, FRcolor, BKcolor, ' ');
-                ++pos.x;
+                pos.x++;
 
                 auto_newline();
             }
         }
         else if (current == '\b') // 退格
         {
-            --pos.x;
+            pos.x--;
             if (pos.x < 0)
             {
                 --pos.y;
@@ -692,7 +686,6 @@ int do_scroll(bool direction, int pixels)
 {
     if (direction == true) // 向上滚动
     {
-        pixels = pixels;
         if (pixels > pos.height)
             return EPOS_OVERFLOW;
         // 无需滚动
@@ -701,8 +694,8 @@ int do_scroll(bool direction, int pixels)
         unsigned int src = pixels * pos.width;
         unsigned int count = pos.FB_length - src;
 
-        memcpy(pos.FB_address, (pos.FB_address + src), sizeof(unsigned int) * (pos.FB_length - src));
-        memset(pos.FB_address + (pos.FB_length - src), 0, sizeof(unsigned int) * (src));
+        memcpy(pos.FB_address, (pos.FB_address + src), sizeof(uint32_t) * (pos.FB_length - src));
+        memset(pos.FB_address + (pos.FB_length - src), 0, sizeof(uint32_t) * src);
 
         return 0;
     }
@@ -718,8 +711,6 @@ int do_scroll(bool direction, int pixels)
  * @param animation 是否包含滑动动画
  */
 
-// @todo: 修复用户态触发键盘中断时产生#UD错误
-// @todo：采用双缓冲区
 int scroll(bool direction, int pixels, bool animation)
 {
     // 暂时不支持反方向滚动

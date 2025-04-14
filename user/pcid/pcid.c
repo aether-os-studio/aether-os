@@ -1,7 +1,9 @@
 #include <libdaemon.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "mcfg.h"
+#include "pci.h"
+
+bool pcie;
 
 user_scheme_t pcid_scheme;
 
@@ -13,13 +15,13 @@ uint64_t pcid_daemon(daemon_t *daemon)
 
     scheme_create("/scheme/pcid", &pcid_scheme);
 
-    finish_daemon(daemon);
+    pcie = true;
 
     int fd = open("/scheme/acpid/MCFG", 0, 0);
     if (fd < 0)
     {
         printf("open acpid scheme failed\n");
-        return -1;
+        pcie = false;
     }
 
     int len = ioctl(fd, SCHEME_IOCTL_GETSIZE, 0);
@@ -27,17 +29,39 @@ uint64_t pcid_daemon(daemon_t *daemon)
     {
         printf("ioctl failed\n");
         close(fd);
-        return -1;
+        pcie = false;
     }
 
     MCFG *buf = (MCFG *)malloc(len);
+    if (!buf)
+    {
+        printf("malloc failed\n");
+        close(fd);
+        pcie = false;
+    }
     memset(buf, 0, len);
 
-    read(fd, buf, len);
+    int ret = read(fd, buf, len);
+    if (ret != len)
+    {
+        printf("read failed\n");
+        free(buf);
+        close(fd);
+        pcie = false;
+    }
 
-    printf("MCFG Signature = %s", buf->Header.Signature);
+    if (pcie)
+    {
+        close(fd);
+    }
 
-    close(fd);
+    iopl(3);
+
+    init_pci(buf, pcie);
+
+    free(buf);
+
+    finish_daemon(daemon);
 
     while (1)
     {

@@ -64,6 +64,9 @@ void page_map_to(page_directory_t *directory, uint64_t addr, uint64_t frame, uin
     page_table_t *l2_table = page_table_create(&(l3_table->entries[l3_index]), user);
     page_table_t *l1_table = page_table_create(&(l2_table->entries[l2_index]), user);
 
+    if (l1_table->entries[l1_index].value != 0)
+        return;
+
     l1_table->entries[l1_index].value = (frame & 0x000ffffffffff000UL) | flags;
 
     flush_tlb(addr);
