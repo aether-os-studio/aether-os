@@ -28,6 +28,9 @@ enum
     SYS_VIRTTOPHYS,
 
     SYS_SCHEME_CREATE,
+    
+    SYS_DMA_ALLOC,
+    SYS_DMA_FREE,
 
     SYS_NUM,
 };

@@ -11,8 +11,8 @@ int main()
     child_pid = fork();
     if (child_pid == 0)
     {
-        // write(1, "Child process\n", 14);
         load_module("/usr/bin/acpid.exec");
+        exit(-1);
     }
     else
     {
@@ -22,8 +22,19 @@ int main()
     child_pid = fork();
     if (child_pid == 0)
     {
-        // write(1, "Child process\n", 14);
         load_module("/usr/bin/pcid.exec");
+        exit(-1);
+    }
+    else
+    {
+        waitpid(child_pid, &status);
+    }
+
+    child_pid = fork();
+    if (child_pid == 0)
+    {
+        load_module("/usr/bin/ahcid.exec");
+        exit(-1);
     }
     else
     {

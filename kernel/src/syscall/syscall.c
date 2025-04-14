@@ -7,6 +7,7 @@
 #include <acpi/acpi.h>
 #include <mm/hhdm.h>
 #include <scheme/scheme.h>
+#include <mm/frame.h>
 
 uint64_t sys_exit(uint64_t code)
 {
@@ -264,6 +265,16 @@ void syscall_handler(struct pt_regs *regs, struct pt_regs *user_regs)
         break;
     case SYS_IOCTL:
         regs->rax = sys_ioctl(arg1, arg2, arg3);
+        break;
+
+    // TODO: 权限检测
+    case SYS_DMA_ALLOC:
+        regs->rax = alloc_frames(arg1);
+        break;
+
+    case SYS_DMA_FREE:
+        free_frames(arg1, arg2);
+        regs->rax = 0;
         break;
 
     default:

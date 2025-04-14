@@ -89,7 +89,7 @@ typedef struct task
 #define KERNEL_USER 0
 #define NORMAL_USER 1
 
-#define MAX_TASK_NUM 1024
+#define MAX_TASK_NUM 2048
 
 extern bool can_schedule;
 

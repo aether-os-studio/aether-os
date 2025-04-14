@@ -3,6 +3,49 @@
 #include <stdlib.h>
 #include "pci.h"
 
+uint64_t pcid_read(uint64_t buf, uint64_t len, uint64_t offset, char *target_name)
+{
+    if (!strncmp(target_name, "ahci", 4))
+    {
+        pci_device_t *device = pci_find_class(0x010600);
+        memcpy((pci_device_t *)buf, device, sizeof(pci_device_t));
+        return sizeof(pci_device_t);
+    }
+
+    if (!strncmp(target_name, "nvme", 4))
+    {
+        pci_device_t *device = pci_find_class(0x010802);
+        memcpy((pci_device_t *)buf, device, sizeof(pci_device_t));
+        return sizeof(pci_device_t);
+    }
+
+    if (!strncmp(target_name, "xhci", 4))
+    {
+        pci_device_t *device = pci_find_class(0x0C0330);
+        memcpy((pci_device_t *)buf, device, sizeof(pci_device_t));
+        return sizeof(pci_device_t);
+    }
+
+    return 0;
+}
+
+uint64_t pcid_write(uint64_t buf, uint64_t len, uint64_t offset, char *target_name)
+{
+    return (uint64_t)-1;
+}
+
+uint64_t pcid_ioctl(uint64_t cmd, uint64_t arg, uint64_t offset, char *target_name)
+{
+    switch (cmd)
+    {
+    case SCHEME_IOCTL_GETSIZE:
+    default:
+        break;
+    }
+
+    return 0;
+}
+
 bool pcie;
 
 user_scheme_t pcid_scheme;
@@ -65,6 +108,29 @@ uint64_t pcid_daemon(daemon_t *daemon)
 
     while (1)
     {
+        if (pcid_scheme.command.cmd != 0)
+        {
+            uint64_t result = 0;
+            switch (pcid_scheme.command.cmd)
+            {
+            case SCHEME_COMMAND_READ:
+                result = pcid_read(pcid_scheme.command.a, pcid_scheme.command.b, pcid_scheme.command.c, (char *)pcid_scheme.command.d);
+                break;
+            case SCHEME_COMMAND_WRITE:
+                result = pcid_write(pcid_scheme.command.a, pcid_scheme.command.b, pcid_scheme.command.c, (char *)pcid_scheme.command.d);
+                break;
+            case SCHEME_COMMAND_IOCTL:
+                result = pcid_ioctl(pcid_scheme.command.a, pcid_scheme.command.b, pcid_scheme.command.c, (char *)pcid_scheme.command.d);
+                break;
+            default:
+                printf("unknown command\n");
+                break;
+            }
+
+            pcid_scheme.command.a = result;
+            pcid_scheme.command.cmd = 0;
+        }
+
         __asm__ __volatile__("pause");
     }
 }

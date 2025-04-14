@@ -55,6 +55,8 @@ typedef struct
     pci_device_op_t *op;
 } pci_device_t;
 
+extern pci_device_t *pci_devices[PCI_DEVICE_MAX];
+
 uint32_t pci_enumerate_capability_list(pci_device_t *pci_dev, uint32_t cap_type);
 
 const char *pci_classname(uint32_t classcode);

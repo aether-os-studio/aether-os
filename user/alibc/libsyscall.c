@@ -108,3 +108,13 @@ uint64_t virttophys(uint64_t virt)
 {
     return enter_syscall(SYS_VIRTTOPHYS, virt, 0, 0, 0, 0, 0);
 }
+
+uint64_t alloc_dma(uint64_t count)
+{
+    return enter_syscall(SYS_DMA_ALLOC, count, 0, 0, 0, 0, 0);
+}
+
+void free_dma(uint64_t addr, uint64_t count)
+{
+    return enter_syscall(SYS_DMA_FREE, addr, count, 0, 0, 0, 0);
+}

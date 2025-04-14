@@ -33,6 +33,9 @@ enum
 
     SYS_SCHEME_CREATE,
 
+    SYS_DMA_ALLOC,
+    SYS_DMA_FREE,
+
     SYS_NUM,
 };
 
@@ -167,3 +170,6 @@ static inline void init_scheme(user_scheme_t *scheme)
 }
 
 void scheme_create(const char *name, user_scheme_t *addr);
+
+uint64_t alloc_dma(uint64_t count);
+void free_dma(uint64_t addr, uint64_t count);

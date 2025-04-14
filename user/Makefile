@@ -7,6 +7,7 @@ all:
 	$(MAKE) -C init
 	$(MAKE) -C acpid
 	$(MAKE) -C pcid
+	$(MAKE) -C ahcid
 
 clean:
-	rm -rf obj
+	rm -rf $(shell find . -name "*.o") obj/
