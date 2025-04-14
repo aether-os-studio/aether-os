@@ -389,15 +389,43 @@ void pci_scan_function(uint16_t segment_group, uint8_t bus, uint8_t device, uint
                 {
                 // 32 bit
                 case 0b00:
+                {
                     pci_device->bars[i].address = bar & 0xFFFFFFFC;
                     pci_device->bars[i].mmio = false;
-                    break;
+
+                    uint32_t original_value = pci_device->op->read(bus, device, function, segment_group, offset);
+
+                    pci_device->op->write(bus, device, function, segment_group, offset, 0xFFFFFFFF);
+                    uint32_t value = pci_device->op->read(bus, device, function, segment_group, offset);
+
+                    pci_device->op->write(bus, device, function, segment_group, offset, original_value);
+
+                    uint32_t mask = (uint32_t)(value & 0xFFFFFFF0);
+
+                    pci_device->bars[i].size = (uint64_t)(~mask + 1);
+                }
+                break;
 
                 // 64 bit
                 case 0b10:
                     uint32_t bar_address_upper = *((uint32_t *)bars_mmio_address + 1);
 
                     bar_address |= ((uint64_t)bar_address_upper << 32);
+
+                    uint32_t original_value = pci_device->op->read(bus, device, function, segment_group, offset);
+                    uint32_t original_value_high = pci_device->op->read(bus, device, function, segment_group, offset + 4);
+
+                    pci_device->op->write(bus, device, function, segment_group, offset, 0xFFFFFFFF);
+                    pci_device->op->write(bus, device, function, segment_group, offset + 4, 0xFFFFFFFF);
+                    uint32_t mask = pci_device->op->read(bus, device, function, segment_group, offset);
+                    uint32_t mask_high = pci_device->op->read(bus, device, function, segment_group, offset + 4);
+
+                    pci_device->op->write(bus, device, function, segment_group, offset, original_value);
+                    pci_device->op->write(bus, device, function, segment_group, offset + 4, original_value_high);
+
+                    uint64_t value = ((uint64_t)mask_high << 32) | (mask & 0xFFFFFFF0);
+
+                    pci_device->bars[i].size = ~value + 1;
 
                     pci_device->bars[i].address = bar_address;
                     pci_device->bars[i].mmio = false;
@@ -510,6 +538,17 @@ void pci_scan_device_legacy(uint32_t bus, uint32_t equipment, uint32_t f)
             if (bar_type == 0x0)
             {
                 device->bars[i].address = bar_low & 0xFFFFFFF0;
+
+                uint32_t original_value = device->op->read(bus, equipment, f, 0, offset);
+
+                device->op->write(bus, equipment, f, 0, offset, 0xFFFFFFFF);
+                uint32_t value = device->op->read(bus, equipment, f, 0, offset);
+
+                device->op->write(bus, equipment, f, 0, offset, original_value);
+
+                uint32_t mask = (uint32_t)(value & 0xFFFFFFF0);
+
+                device->bars[i].size = (uint64_t)(~mask + 1);
             }
             else if (bar_type == 0x2)
             {
@@ -522,7 +561,23 @@ void pci_scan_device_legacy(uint32_t bus, uint32_t equipment, uint32_t f)
                 uint32_t bar_high = device->op->read(bus, equipment, f, 0, offset + 4);
                 device->bars[i].address = ((uint64_t)bar_high << 32) | (bar_low & 0xFFFFFFF0);
 
+                uint32_t original_value = device->op->read(bus, equipment, f, 0, offset);
+                uint32_t original_value_high = device->op->read(bus, equipment, f, 0, offset + 4);
+
+                device->op->write(bus, equipment, f, 0, offset, 0xFFFFFFFF);
+                device->op->write(bus, equipment, f, 0, offset + 4, 0xFFFFFFFF);
+                uint32_t mask = device->op->read(bus, equipment, f, 0, offset);
+                uint32_t mask_high = device->op->read(bus, equipment, f, 0, offset + 4);
+
+                device->op->write(bus, equipment, f, 0, offset, original_value);
+                device->op->write(bus, equipment, f, 0, offset + 4, original_value_high);
+
+                uint64_t mask_value = ((uint64_t)mask_high << 32) | (mask & 0xFFFFFFF0);
+
+                device->bars[i].size = ~mask_value + 1;
+
                 i++;
+
                 device->bars[i].mmio = true;
                 device->bars[i].address = 0;
                 device->bars[i].size = 0;
