@@ -112,6 +112,8 @@ uint64_t blkd_ioctl(uint64_t cmd, uint64_t arg, uint64_t offset, char *target_na
         }
     }
     break;
+    case SCHEME_IOCTL_GETSIZE:
+        return blk_devnum;
     case SCHEME_IOCTL_REGIST_BLKDEV:
     {
         char *blkdev_name = target_name;
