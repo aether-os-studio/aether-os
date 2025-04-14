@@ -9,6 +9,7 @@ typedef struct scheme
 {
     char name[SCHEME_NAME_MAX];
     char target_name[SCHEME_NAME_MAX];
+    uint64_t offset;
     uint64_t command_d;
     task_t *task;
     void *user_scheme;

@@ -340,6 +340,8 @@ struct ahci_driver *ahci_driver_init(pci_bar_base_address *bar5)
 
 // Daemon
 
+struct ahci_driver *drv;
+
 uint64_t ahcid_daemon(daemon_t *daemon)
 {
     printf("ahcid daemon is running\n");
@@ -369,16 +371,17 @@ uint64_t ahcid_daemon(daemon_t *daemon)
         return -1;
     }
 
-    struct ahci_driver *drv = ahci_driver_init(bar5);
+    drv = ahci_driver_init(bar5);
 
-    printf("ahci daemon init done\n");
+    printf("ahci driver init done\n");
+
+    init_scheme(&ahcid_scheme);
+
+    scheme_create("/scheme/ahcid", &ahcid_scheme);
 
     finish_daemon(daemon);
 
-    while (1)
-    {
-        __asm__ __volatile__("pause");
-    }
+    return main_loop();
 }
 
 int main()

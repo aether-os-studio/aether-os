@@ -7,6 +7,7 @@ all:
 	$(MAKE) -C init
 	$(MAKE) -C acpid
 	$(MAKE) -C pcid
+	$(MAKE) -C blkd
 	$(MAKE) -C ahcid
 
 clean:

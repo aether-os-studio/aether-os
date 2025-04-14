@@ -137,6 +137,8 @@ uint64_t physmap(uint64_t addr, uint64_t size, uint64_t flags);
 enum
 {
     SCHEME_IOCTL_GETSIZE = 1,
+    SCHEME_IOCTL_GETBLKSIZE,
+    SCHEME_IOCTL_REGIST_BLKDEV,
 };
 
 enum

@@ -19,6 +19,7 @@ void scheme_create(const char *name, uint64_t ptr)
     strncpy(scheme->name, name, SCHEME_NAME_MAX);
     scheme->task = current_task;
     scheme->user_scheme = (void *)translate_addr(get_current_page_dir(), ptr);
+    scheme->offset = 0;
     user_scheme_t *uscheme = phys_to_virt((user_scheme_t *)scheme->user_scheme);
     user_scheme_command_t *command = &uscheme->command;
 
@@ -89,6 +90,7 @@ uint64_t scheme_transfer(scheme_t *scheme, uint64_t cmd, uint64_t buffer, uint64
         command->a = buffer;
     }
     command->b = len;
+    command->c = scheme->offset;
 
     strncpy(phys_to_virt((char *)scheme->command_d), scheme->target_name, SCHEME_NAME_MAX);
 

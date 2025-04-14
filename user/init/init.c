@@ -33,6 +33,17 @@ int main()
     child_pid = fork();
     if (child_pid == 0)
     {
+        load_module("/usr/bin/blkd.exec");
+        exit(-1);
+    }
+    else
+    {
+        waitpid(child_pid, &status);
+    }
+
+    child_pid = fork();
+    if (child_pid == 0)
+    {
         load_module("/usr/bin/ahcid.exec");
         exit(-1);
     }

@@ -158,6 +158,7 @@ $(IMAGE_NAME).iso: limine/limine kernel user
 	cp -v user/init/initd.exec iso_root/usr/bin
 	cp -v user/acpid/acpid.exec iso_root/usr/bin
 	cp -v user/pcid/pcid.exec iso_root/usr/bin
+	cp -v user/blkd/blkd.exec iso_root/usr/bin
 	cp -v user/ahcid/ahcid.exec iso_root/usr/bin
 	xorriso -as mkisofs -R -r -J -b boot/limine/limine-bios-cd.bin \
 		-no-emul-boot -boot-load-size 4 -boot-info-table -hfsplus \
@@ -181,6 +182,7 @@ $(IMAGE_NAME).hdd: limine/limine kernel user
 	mcopy -i $(IMAGE_NAME).hdd@@1M user/init/initd.exec ::/usr/bin
 	mcopy -i $(IMAGE_NAME).hdd@@1M user/acpid/acpid.exec ::/usr/bin
 	mcopy -i $(IMAGE_NAME).hdd@@1M user/pcid/pcid.exec ::/usr/bin
+	mcopy -i $(IMAGE_NAME).hdd@@1M user/blkd/blkd.exec ::/usr/bin
 	mcopy -i $(IMAGE_NAME).hdd@@1M user/ahcid/ahcid.exec ::/usr/bin
 
 .PHONY: clean
