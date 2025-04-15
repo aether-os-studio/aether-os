@@ -4,4 +4,9 @@ all:
 	gcc $(CFLAGS) -c vfs/vfs.c -o vfs/vfs.o
 	gcc $(CFLAGS) -c vfs/dev.c -o vfs/dev.o
 	gcc $(CFLAGS) -c iso9660/iso9660.c -o iso9660/iso9660.o
-	ld fsd.o partition.o vfs/vfs.o vfs/dev.o iso9660/iso9660.o $(shell find $(CWD)/obj/ -name "*.o") -o fsd.exec	
+	gcc $(CFLAGS) -c fatfs/diskio.c -o fatfs/diskio.o
+	gcc $(CFLAGS) -c fatfs/ffsystem.c -o fatfs/ffsystem.o
+	gcc $(CFLAGS) -c fatfs/ffunicode.c -o fatfs/ffunicode.o
+	gcc $(CFLAGS) -c fatfs/ff.c -o fatfs/ff.o
+	gcc $(CFLAGS) -c fatfs/fatfs.c -o fatfs/fatfs.o
+	ld $(shell find . -name "*.o") $(shell find $(CWD)/obj/ -name "*.o") -o fsd.exec	

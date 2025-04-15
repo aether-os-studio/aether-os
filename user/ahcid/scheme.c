@@ -85,7 +85,6 @@ uint64_t ahcid_ioctl(uint64_t cmd, uint64_t arg, uint64_t offset, char *target_n
     {
     case SCHEME_IOCTL_GETBLKSIZE:
     {
-
         if (is_digit(target_name[0]))
         {
             uint8_t idx = 0;
@@ -107,6 +106,9 @@ uint64_t ahcid_ioctl(uint64_t cmd, uint64_t arg, uint64_t offset, char *target_n
             return device->block_size;
         }
     }
+    case SCHEME_IOCTL_GETSIZE:
+        struct hba_device *device = drv->hba.ports[arg]->device;
+        return device->max_lba;
 
     default:
         break;

@@ -6,16 +6,28 @@
 #include "vfs/vfs.h"
 
 extern void iso9660_init();
+extern void fatfs_init();
 
 void mount_root()
 {
-    printf("mounting root\n");
-    if (vfs_mount("/dev/part0", rootdir))
+    printf("Mounting root\n");
+    bool err = false;
+    for (uint64_t i = 0; i < partition_num; i++)
     {
-        printf("Mount root error\n");
-        return;
+        char buf[11];
+        sprintf(buf, "/dev/part%d", i);
+        if (vfs_mount(buf, rootdir))
+            err = true;
+        else
+        {
+            err = false;
+            break;
+        }
     }
-    printf("Mount root OK\n");
+    if (err)
+        printf("Mount root failed\n");
+    else
+        printf("Mount root OK\n");
 }
 
 uint64_t fsd_daemon(daemon_t *daemon)
@@ -29,6 +41,7 @@ uint64_t fsd_daemon(daemon_t *daemon)
     dev_init();
 
     iso9660_init();
+    fatfs_init();
 
     mount_root();
 
