@@ -122,6 +122,8 @@ int lseek(int fd, int offset);
 int ioctl(int fd, int cmd, int arg);
 int getdents(int fd, void *buf, int count);
 
+void *brk(uint64_t addr);
+
 void iopl(uint64_t level);
 
 int fork();

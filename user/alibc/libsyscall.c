@@ -79,6 +79,11 @@ int getdents(int fd, void *buf, int count)
     return enter_syscall(SYS_GETDENTS, fd, (uint64_t)buf, count, 0, 0, 0);
 }
 
+void *brk(uint64_t addr)
+{
+    return enter_syscall(SYS_BRK, addr, 0, 0, 0, 0, 0);
+}
+
 int fork()
 {
     return (int)enter_syscall(SYS_FORK, 0, 0, 0, 0, 0, 0);
