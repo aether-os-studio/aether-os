@@ -87,7 +87,7 @@ ifeq ($(SUDO), 1)
 		-device ide-hd,drive=harddisk,bus=ahci.0 \
 		$(QEMUFLAGS)
 else
-	sudo qemu-system-x86_64 \
+	qemu-system-x86_64 \
 		-M q35 \
 		-drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-code-x86_64.fd,readonly=on \
 		-drive if=none,file=$(IMAGE_NAME).hdd,format=raw,id=harddisk \
