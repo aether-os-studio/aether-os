@@ -11,6 +11,7 @@ typedef struct blkdev
 {
     char dev_scheme_name[DEV_SCHEME_NAME_MAX];
     uint64_t block_size;
+    uint64_t size;
 } blkdev_t;
 
 blkdev_t blk_devs[MAX_BLKDEV_NUM];

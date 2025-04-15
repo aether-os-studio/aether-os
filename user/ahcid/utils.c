@@ -58,7 +58,12 @@ void ahci_post(struct hba_port *port, struct hba_cmd_state *state, int slot)
     int bitmask = 1 << slot;
 
     // 确保端口是空闲的
-    wait_until(!(port->regs[HBA_RPxTFD] & (HBA_PxTFD_BSY | HBA_PxTFD_DRQ)));
+    uint64_t counter = wait_until_expire(!(port->regs[HBA_RPxTFD] & (HBA_PxTFD_BSY | HBA_PxTFD_DRQ)), 10000000000);
+    if (!counter)
+    {
+        printf("AHCI wait timeout");
+        return;
+    }
 
     hba_clear_reg(port->regs[HBA_RPxIS]);
 

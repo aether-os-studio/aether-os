@@ -10,7 +10,7 @@
 
 #define wait_until_expire(cond, max)          \
     ({                                        \
-        uint32_t __wcounter__ = (max);        \
+        uint64_t __wcounter__ = (max);        \
         while (!(cond) && __wcounter__-- > 1) \
             ;                                 \
         __wcounter__;                         \

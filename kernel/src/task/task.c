@@ -259,6 +259,8 @@ void task_exit(int code)
         task_unblock(parent, EOK);
     }
 
+    free_page_table_recursive(current_task->pgdir, 4);
+
     task_t *next = task_search(TASK_READY, current_cpu_id);
 
     task_switch_to(NULL, NULL, next);

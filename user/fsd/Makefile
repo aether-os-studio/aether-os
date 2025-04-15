@@ -1,3 +1,4 @@
 all:
 	gcc $(CFLAGS) -c fsd.c -o fsd.o
-	ld fsd.o $(shell find $(CWD)/obj/ -name "*.o") -o fsd.exec	
+	gcc $(CFLAGS) -c partition.c -o partition.o
+	ld fsd.o partition.o $(shell find $(CWD)/obj/ -name "*.o") -o fsd.exec	

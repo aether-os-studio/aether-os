@@ -135,6 +135,45 @@ void copy_page_table_recursive(page_table_t *source_table, page_table_t *new_tab
     }
 }
 
+// 递归释放页表及其子页表
+static void free_page_table(uint64_t phys_addr, int level)
+{
+    uint64_t *table = phys_to_virt((uint64_t *)phys_addr);
+
+    for (int i = 0; i < 512; ++i)
+    {
+        uint64_t pte = table[i];
+        if (!(pte & PTE_PRESENT))
+            continue; // 跳过无效项
+
+        if (level == 1)
+        { // PT层，释放4KB页
+            free_frames(pte & 0x00007FFFFFFFF000, 1);
+        }
+        else
+        {
+            free_page_table(pte & 0x00007FFFFFFFF000, level - 1); // 递归子页表
+        }
+    }
+
+    free_frames(phys_addr, 1); // 释放当前页表页
+}
+
+// 主函数：释放用户空间所有页表及物理页
+void free_page_table_recursive(page_directory_t *directory, int level)
+{
+    uint64_t *pml4 = phys_to_virt((uint64_t *)directory->table);
+
+    for (int i = 0; i < 256; ++i)
+    {
+        if (pml4[i] & PTE_PRESENT)
+        {
+            free_page_table(pml4[i] & 0x00007FFFFFFFF000, level - 1);
+            pml4[i] = 0;
+        }
+    }
+}
+
 page_directory_t *clone_directory(page_directory_t *src)
 {
     page_directory_t *new_directory = (page_directory_t *)malloc(sizeof(page_directory_t));
