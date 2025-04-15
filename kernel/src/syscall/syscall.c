@@ -173,6 +173,14 @@ uint64_t sys_close(uint64_t fd)
     current_task->schemes[fd] = (scheme_t *)NULL;
 }
 
+uint64_t sys_getdents(uint64_t fd, uint64_t buf, uint64_t size)
+{
+    if (!current_task->schemes[fd])
+        return (uint64_t)-EBADF;
+
+    return scheme_readdir(current_task->schemes[fd], buf, size);
+}
+
 extern void sys_load_module(const char *);
 
 void *real_memcpy(void *dst, void *src, long len)
@@ -281,6 +289,9 @@ void syscall_handler(struct pt_regs *regs, struct pt_regs *user_regs)
         break;
     case SYS_IOCTL:
         regs->rax = sys_ioctl(arg1, arg2, arg3);
+        break;
+    case SYS_GETDENTS:
+        regs->rax = sys_getdents(arg1, arg2, arg3);
         break;
 
     // TODO: 权限检测

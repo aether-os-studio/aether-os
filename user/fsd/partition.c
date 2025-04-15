@@ -5,10 +5,16 @@ uint64_t partition_num;
 
 uint64_t partition_read(uint64_t part_id, uint64_t offset, void *buf, uint64_t len)
 {
+    partition_t *part = &partitions[part_id];
+    lseek(part->blkdev_fd, part->starting_lba * 512 + offset);
+    read(part->blkdev_fd, buf, len);
 }
 
 uint64_t partition_write(uint64_t part_id, uint64_t offset, void *buf, uint64_t len)
 {
+    partition_t *part = &partitions[part_id];
+    lseek(part->blkdev_fd, part->starting_lba * 512 + offset);
+    write(part->blkdev_fd, buf, len);
 }
 
 void partition_init()
@@ -42,7 +48,7 @@ void partition_init()
         if (memcmp(buffer->signature, GPT_HEADER_SIGNATURE, 8) || buffer->num_partition_entries == 0 || buffer->partition_entry_lba == 0)
             goto probe_mbr;
 
-        struct GPT_DPTE *dptes = (struct GPT_DPT *)malloc(sizeof(struct GPT_DPTE) * buffer->num_partition_entries);
+        struct GPT_DPTE *dptes = (struct GPT_DPTE *)malloc(sizeof(struct GPT_DPTE) * buffer->num_partition_entries);
         lseek(fd, buffer->partition_entry_lba * 512);
         read(fd, buffer, sizeof(struct GPT_DPTE) * buffer->num_partition_entries);
 
@@ -61,24 +67,29 @@ void partition_init()
         free(dptes);
         free(buffer);
 
-        close(fd);
-
         continue;
 
     probe_mbr:
-
-        struct MBR_DPT *boot_sector = (struct MBR_DPT *)malloc(sizeof(struct MBR_DPT));
-        lseek(fd, 0);
-        read(fd, boot_sector, sizeof(struct MBR_DPT));
-        if (boot_sector->BS_TrailSig != 0xaa55)
+        char *iso9660_detect = malloc(5);
+        memset(iso9660_detect, 0, 5);
+        lseek(fd, 0x8001);
+        read(fd, iso9660_detect, 5);
+        if (!memcmp(iso9660_detect, "CD001", 5))
         {
             part->blkdev_fd = blkdev_fd;
             part->starting_lba = 0;
             part->ending_lba = 0;
             part->type = ISO9660;
             partition_num++;
-            goto ok;
+
+            free(iso9660_detect);
+
+            continue;
         }
+
+        struct MBR_DPT *boot_sector = (struct MBR_DPT *)malloc(sizeof(struct MBR_DPT));
+        lseek(fd, 0);
+        read(fd, boot_sector, sizeof(struct MBR_DPT));
 
         for (int j = 0; j < MBR_MAX_PARTITION_NUM; j++)
         {
@@ -94,8 +105,7 @@ void partition_init()
 
     ok:
         free(boot_sector);
-        close(fd);
     }
 
-    printf("Found %d partitions", partition_num);
+    printf("Found %d partitions\n", partition_num);
 }

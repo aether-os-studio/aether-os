@@ -1,6 +1,7 @@
 #include <klibc.h>
 #include <task/execve.h>
 #include <kprint.h>
+#include <task/task.h>
 
 __attribute__((used, section(".limine_requests"))) static volatile struct limine_module_request module_request = {
     .id = LIMINE_MODULE_REQUEST,
@@ -32,6 +33,7 @@ void sys_load_module(const char *name)
             struct limine_file *module = response->modules[i];
             if (!strcmp(module->path, name))
             {
+                strcpy(current_task->name, name);
                 load_module(module);
             }
         }

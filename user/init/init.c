@@ -13,7 +13,6 @@ int main()
     if (child_pid == 0)
     {
         load_module("/usr/bin/acpid.exec");
-        exit(-1);
     }
     else
     {
@@ -24,7 +23,6 @@ int main()
     if (child_pid == 0)
     {
         load_module("/usr/bin/blkd.exec");
-        exit(-1);
     }
     else
     {
@@ -35,7 +33,6 @@ int main()
     if (child_pid == 0)
     {
         load_module("/usr/bin/pcid.exec");
-        exit(-1);
     }
     else
     {
@@ -46,7 +43,6 @@ int main()
     if (child_pid == 0)
     {
         load_module("/usr/bin/ahcid.exec");
-        exit(-1);
     }
     else
     {
@@ -57,7 +53,6 @@ int main()
     if (child_pid == 0)
     {
         load_module("/usr/bin/fsd.exec");
-        exit(-1);
     }
     else
     {

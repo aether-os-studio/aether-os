@@ -32,6 +32,21 @@ typedef struct tss
     uint16_t iomapbaseaddr;
 } __attribute__((packed)) tss_t;
 
+typedef struct
+{
+    uint16_t fcw;
+    uint16_t fsw;
+    uint16_t ftw;
+    uint16_t fop;
+    uint64_t word2;
+    uint64_t word3;
+    uint32_t mxscr;
+    uint32_t mxcsr_mask;
+    uint64_t mm[16];
+    uint64_t xmm[32];
+    uint64_t rest[12];
+} __attribute__((aligned(16))) fpu_context;
+
 typedef enum task_state
 {
     TASK_RUNNING = 1,
@@ -77,6 +92,7 @@ typedef struct task
     page_directory_t *pgdir;
     task_thread_t *thread;
     task_state_t state;
+    fpu_context *fpu;
     scheme_t *schemes[MAX_FD_NUM];
     int status;
     sigaction_t actions[MAXSIG];

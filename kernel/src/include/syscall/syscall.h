@@ -10,6 +10,7 @@ enum
     SYS_CLOSE,
     SYS_LSEEK,
     SYS_IOCTL,
+    SYS_GETDENTS,
     SYS_SIGACTION,
     SYS_SIGNAL,
     SYS_SETMASK,
@@ -29,7 +30,7 @@ enum
     SYS_VIRTTOPHYS,
 
     SYS_SCHEME_CREATE,
-    
+
     SYS_DMA_ALLOC,
     SYS_DMA_FREE,
 

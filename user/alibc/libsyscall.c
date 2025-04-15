@@ -74,6 +74,11 @@ int ioctl(int fd, int cmd, int arg)
     return enter_syscall(SYS_IOCTL, fd, cmd, arg, 0, 0, 0);
 }
 
+int getdents(int fd, void *buf, int count)
+{
+    return enter_syscall(SYS_GETDENTS, fd, (uint64_t)buf, count, 0, 0, 0);
+}
+
 int fork()
 {
     return (int)enter_syscall(SYS_FORK, 0, 0, 0, 0, 0, 0);

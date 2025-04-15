@@ -235,6 +235,8 @@ void do_page_fault(struct pt_regs *regs, uint64_t error_code)
     if (error_code & 0x10)
         printk("Fault occurred during fetching instruction.\n");
 
+    printk("task: %s", current_task->name);
+
     while (1)
         hlt();
 }

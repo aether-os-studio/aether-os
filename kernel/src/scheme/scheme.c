@@ -76,7 +76,7 @@ uint64_t scheme_transfer(scheme_t *scheme, uint64_t cmd, uint64_t buffer, uint64
             return (uint64_t)-EINVAL;
         }
 
-        page_map_range_to(scheme->task->pgdir, buffer_phys, buffer_phys, len, USER_PTE_FLAGS);
+        page_map_range_to(scheme->task->pgdir, buffer_phys, buffer_phys, len + PAGE_SIZE, USER_PTE_FLAGS);
 
         command->a = buffer_phys;
     }
@@ -115,4 +115,9 @@ uint64_t scheme_write(scheme_t *scheme, uint64_t buffer, uint64_t len)
 uint64_t scheme_ioctl(scheme_t *scheme, uint64_t buffer, uint64_t len)
 {
     return scheme_transfer(scheme, SCHEME_COMMAND_IOCTL, buffer, len);
+}
+
+uint64_t scheme_readdir(scheme_t *scheme, uint64_t buffer, uint64_t len)
+{
+    return scheme_transfer(scheme, SCHEME_COMMAND_READDIR, buffer, len);
 }

@@ -390,7 +390,7 @@ int vsprintf(char *buf, const char *fmt, va_list args)
         case 's':
             s = va_arg(args, char *);
             if (!s)
-                s = '\0';
+                s = "\0";
             len = strlen(s);
             if (precision < 0)
             {

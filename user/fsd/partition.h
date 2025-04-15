@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define MAX_PARTITIONS_NUM 1024
+#define MAX_PARTITIONS_NUM 128
 
 #define MBR_MAX_PARTITION_NUM 4
 
@@ -72,6 +72,9 @@ typedef struct partition
         ISO9660,
     } type;
 } partition_t;
+
+extern partition_t partitions[MAX_PARTITIONS_NUM];
+extern uint64_t partition_num;
 
 uint64_t partition_read(uint64_t part_id, uint64_t offset, void *buf, uint64_t len);
 uint64_t partition_write(uint64_t part_id, uint64_t offset, void *buf, uint64_t len);

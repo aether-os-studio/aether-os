@@ -5,7 +5,6 @@
 #define BLOCK_HEADER_SIZE sizeof(struct block_header)
 #define ALIGNMENT 8
 
-// 内存块头部结构
 struct block_header
 {
     size_t size;
@@ -13,20 +12,24 @@ struct block_header
     struct block_header *next;
 };
 
-static struct block_header *head = NULL; // 空闲链表头
-static void *current_break = NULL;       // 当前堆顶地址
+static struct block_header *head = NULL;
+static void *current_break = NULL;
 
-// 自定义brk系统调用封装
 static void *sys_brk(void *addr)
 {
     return (void *)enter_syscall(SYS_BRK, (uint64_t)addr, 0, 0, 0, 0, 0);
 }
 
-// 请求堆扩展
 static struct block_header *request_memory(size_t size)
 {
     void *old_break = current_break;
-    void *new_break = old_break + size;
+    if (!old_break)
+    {
+        old_break = sys_brk(0);
+        current_break = old_break;
+    }
+
+    void *new_break = (char *)old_break + size;
     void *actual_break = sys_brk(new_break);
 
     if (actual_break >= new_break)
@@ -38,14 +41,13 @@ static struct block_header *request_memory(size_t size)
         block->next = NULL;
         return block;
     }
-    return NULL; // 扩展失败
+    return NULL;
 }
 
-// 分割块
 static void split_block(struct block_header *block, size_t size)
 {
     size_t remaining_size = block->size - size;
-    if (remaining_size > BLOCK_HEADER_SIZE)
+    if (remaining_size > BLOCK_HEADER_SIZE + ALIGNMENT)
     {
         struct block_header *new_block = (struct block_header *)((char *)block + size);
         new_block->size = remaining_size - BLOCK_HEADER_SIZE;
@@ -53,87 +55,97 @@ static void split_block(struct block_header *block, size_t size)
         new_block->next = block->next;
         block->next = new_block;
         block->size = size;
+
+        // 将新分割出的空闲块插入空闲链表
+        if (new_block->free)
+        {
+            new_block->next = head;
+            head = new_block;
+        }
     }
 }
 
-// 合并相邻空闲块
-static void coalesce(struct block_header *block)
+static void coalesce()
 {
-    // 合并后面的块
-    struct block_header *next_block = block->next;
-    if (next_block && (char *)block + block->size == (char *)next_block)
-    {
-        if (block->free && next_block->free)
-        {
-            block->size += BLOCK_HEADER_SIZE + next_block->size;
-            block->next = next_block->next;
-        }
-    }
-
-    // 合并前面的块
+    struct block_header *curr = head;
     struct block_header *prev = NULL;
-    struct block_header *current = head;
-    while (current && current != block)
+
+    while (curr)
     {
-        prev = current;
-        current = current->next;
-    }
-    if (prev && (char *)prev + prev->size + BLOCK_HEADER_SIZE == (char *)block)
-    {
-        if (prev->free && block->free)
+        // 合并后面的块
+        if (curr->next && (char *)curr + curr->size == (char *)curr->next)
         {
-            prev->size += BLOCK_HEADER_SIZE + block->size;
-            prev->next = block->next;
+            if (curr->free && curr->next->free)
+            {
+                curr->size += BLOCK_HEADER_SIZE + curr->next->size;
+                curr->next = curr->next->next;
+                continue; // 继续检查是否有更多可合并的块
+            }
         }
+
+        // 合并前面的块
+        if (prev && (char *)prev + prev->size == (char *)curr - BLOCK_HEADER_SIZE)
+        {
+            if (prev->free && curr->free)
+            {
+                prev->size += BLOCK_HEADER_SIZE + curr->size;
+                prev->next = curr->next;
+                curr = prev; // 重置当前指针继续检查
+                continue;
+            }
+        }
+
+        prev = curr;
+        curr = curr->next;
     }
 }
 
-// 分配内存
 void *malloc(size_t size)
 {
     if (size == 0)
         return NULL;
 
-    if (current_break == NULL)
-    {
-        current_break = (void *)sys_brk(0);
-    }
-
     size = align_to(size, ALIGNMENT);
     size_t total_size = BLOCK_HEADER_SIZE + size;
 
-    struct block_header *block = NULL;
-
-    // 查找空闲块
-    struct block_header **prev_ptr = &head;
-    for (struct block_header *curr = head; curr; prev_ptr = &curr->next, curr = curr->next)
+    // 第一次调用时初始化堆
+    if (!current_break)
     {
-        if (curr->free && curr->size >= total_size)
+        current_break = sys_brk(0);
+    }
+
+    struct block_header *best_fit = NULL;
+    struct block_header **best_fit_prev = &head;
+
+    // 使用最佳适配算法
+    for (struct block_header **curr = &head; *curr; curr = &(*curr)->next)
+    {
+        if ((*curr)->free && (*curr)->size >= total_size)
         {
-            block = curr;
-            *prev_ptr = curr->next; // 从空闲链表中移除
-            break;
+            if (!best_fit || (*curr)->size < best_fit->size)
+            {
+                best_fit = *curr;
+                best_fit_prev = curr;
+            }
         }
     }
 
-    if (block)
+    if (best_fit)
     {
-        split_block(block, total_size);
-        block->free = 0;
+        *best_fit_prev = best_fit->next; // 从空闲链表中移除
+        split_block(best_fit, total_size);
+        best_fit->free = 0;
+        return (void *)(best_fit + 1);
     }
-    else
-    {
-        block = request_memory(total_size);
-        if (!block)
-            return NULL;
-        block->next = head;
-        head = block;
-    }
+
+    // 没有找到合适块，请求新内存
+    struct block_header *block = request_memory(total_size);
+    if (!block)
+        return NULL;
 
     return (void *)(block + 1);
 }
 
-// 释放内存
 void free(void *ptr)
 {
     if (!ptr)
@@ -142,9 +154,51 @@ void free(void *ptr)
     struct block_header *block = (struct block_header *)ptr - 1;
     block->free = 1;
 
-    // 插入到空闲链表头部以便快速合并
+    // 插入到空闲链表头部
     block->next = head;
     head = block;
 
-    coalesce(block);
+    // 合并相邻空闲块
+    coalesce();
+}
+
+void *realloc(void *ptr, size_t size)
+{
+    if (!ptr)
+        return malloc(size);
+    if (size == 0)
+    {
+        free(ptr);
+        return NULL;
+    }
+
+    struct block_header *block = (struct block_header *)ptr - 1;
+    size_t aligned_size = align_to(size, ALIGNMENT);
+
+    // 尝试就地扩展
+    if (block->size >= aligned_size + BLOCK_HEADER_SIZE)
+    {
+        split_block(block, aligned_size + BLOCK_HEADER_SIZE);
+        return ptr;
+    }
+
+    // 尝试合并后面的块
+    if (block->next && block->next->free &&
+        (block->size + BLOCK_HEADER_SIZE + block->next->size) >= aligned_size)
+    {
+        block->size += BLOCK_HEADER_SIZE + block->next->size;
+        block->next = block->next->next;
+        split_block(block, aligned_size + BLOCK_HEADER_SIZE);
+        return ptr;
+    }
+
+    // 无法就地扩展，分配新内存并复制数据
+    void *new_ptr = malloc(size);
+    if (!new_ptr)
+        return NULL;
+
+    size_t copy_size = block->size < size ? block->size : size;
+    memcpy(new_ptr, ptr, copy_size);
+    free(ptr);
+    return new_ptr;
 }

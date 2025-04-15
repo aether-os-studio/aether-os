@@ -20,6 +20,7 @@ enum
     SCHEME_COMMAND_READ = 1,
     SCHEME_COMMAND_WRITE,
     SCHEME_COMMAND_IOCTL,
+    SCHEME_COMMAND_READDIR,
 };
 
 typedef struct user_scheme_command
@@ -47,3 +48,4 @@ void scheme_close(scheme_t *scheme);
 uint64_t scheme_read(scheme_t *scheme, uint64_t buffer, uint64_t len);
 uint64_t scheme_write(scheme_t *scheme, uint64_t buffer, uint64_t len);
 uint64_t scheme_ioctl(scheme_t *scheme, uint64_t buffer, uint64_t len);
+uint64_t scheme_readdir(scheme_t *scheme, uint64_t buffer, uint64_t len);

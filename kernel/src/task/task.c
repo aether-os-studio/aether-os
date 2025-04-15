@@ -2,6 +2,7 @@
 #include <mm/hhdm.h>
 #include <mm/frame.h>
 #include <mm/page.h>
+#include <mm/heap.h>
 #include <irq/gate.h>
 #include <irq/irq.h>
 #include <kprint.h>
@@ -108,6 +109,10 @@ task_t *task_create(const char *name, void (*entry)(), uint64_t uid)
     task->on_cpu = alloc_cpuid();
     task->pgdir = clone_directory(get_kernel_page_dir());
     task->state = TASK_READY;
+    task->fpu = (fpu_context *)phys_to_virt(alloc_frames(1));
+    memset(task->fpu, 0, sizeof(fpu_context));
+    task->fpu->mxscr = 0x1f80;
+    task->fpu->fcw = 0x037f;
 
     task->thread = (task_thread_t *)(task + 1);
     task->thread->fs = SELECTOR_KERNEL_DS;
@@ -213,6 +218,8 @@ void task_switch_to(struct pt_regs *curr, task_t *prev, task_t *next)
         prev->thread->gsbase = read_gsbase();
 
         prev->state = TASK_READY;
+
+        __asm__ __volatile__("fxsave (%0)" ::"r"(prev->fpu));
     }
 
     if (can_schedule)
@@ -232,6 +239,8 @@ void task_switch_to(struct pt_regs *curr, task_t *prev, task_t *next)
 
         next->state = TASK_RUNNING;
 
+        __asm__ __volatile__("fxrstor (%0)" ::"r"(next->fpu));
+
         __asm__ __volatile__("movq %0, %%cr3\n\t" ::"r"(next->pgdir->table));
 
         __asm__ __volatile__(
@@ -250,6 +259,8 @@ void task_exit(int code)
     // kinfo("task %s %#018lx exit......", current_task->name, current_task);
 
     current_task->state = TASK_DIED;
+
+    free_frames(virt_to_phys((uint64_t)current_task->fpu), 1);
 
     current_task->status = code;
 
@@ -333,6 +344,8 @@ uint64_t sys_fork(struct pt_regs *regs)
     child->parent_task_id = current_task->task_id;
 
     child->state = TASK_READY;
+    child->fpu = (fpu_context *)phys_to_virt(alloc_frames(1));
+    memcpy(child->fpu, current_task->fpu, sizeof(fpu_context));
 
     child->pgdir = clone_directory(get_current_page_dir());
 

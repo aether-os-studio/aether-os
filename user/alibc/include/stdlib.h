@@ -2,6 +2,10 @@
 
 #include <stddef.h>
 
+void *malloc(size_t size);
+void *realloc(void *ptr, size_t newsize);
+void free(void *ptr);
+
 static inline void *memcpy(void *To, void *From, long Num)
 {
     int d0, d1, d2;
@@ -214,5 +218,4 @@ static inline int strlen(char *String)
     return __res;
 }
 
-void *malloc(size_t size);
-void free(void *ptr);
+char *strdup(const char *s);

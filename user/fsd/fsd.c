@@ -2,6 +2,21 @@
 #include <libdaemon.h>
 #include <stdio.h>
 #include "partition.h"
+#include "vfs/dev.h"
+#include "vfs/vfs.h"
+
+extern void iso9660_init();
+
+void mount_root()
+{
+    printf("mounting root\n");
+    if (vfs_mount("/dev/part0", rootdir))
+    {
+        printf("Mount root error\n");
+        return;
+    }
+    printf("Mount root OK\n");
+}
 
 uint64_t fsd_daemon(daemon_t *daemon)
 {
@@ -9,7 +24,22 @@ uint64_t fsd_daemon(daemon_t *daemon)
 
     partition_init();
 
+    vfs_init();
+
+    dev_init();
+
+    iso9660_init();
+
+    mount_root();
+
     finish_daemon(daemon);
+
+    // test time!
+    list_foreach(rootdir->child, node)
+    {
+        vfs_node_t file = (vfs_node_t)node->data;
+        printf("%s\n", file->name);
+    };
 
     while (1)
     {

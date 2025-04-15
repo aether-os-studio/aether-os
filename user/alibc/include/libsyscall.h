@@ -6,6 +6,8 @@
 
 #include <errno.h>
 
+typedef long long ssize_t;
+
 enum
 {
     SYS_READ = 1,
@@ -14,6 +16,7 @@ enum
     SYS_CLOSE,
     SYS_LSEEK,
     SYS_IOCTL,
+    SYS_GETDENTS,
     SYS_SIGACTION,
     SYS_SIGNAL,
     SYS_SETMASK,
@@ -117,6 +120,7 @@ int write(int fd, void *buf, int len);
 int close(int fd);
 int lseek(int fd, int offset);
 int ioctl(int fd, int cmd, int arg);
+int getdents(int fd, void *buf, int count);
 
 void iopl(uint64_t level);
 
@@ -148,6 +152,7 @@ enum
     SCHEME_COMMAND_READ = 1,
     SCHEME_COMMAND_WRITE,
     SCHEME_COMMAND_IOCTL,
+    SCHEME_COMMAND_READDIR,
 };
 
 typedef struct user_scheme_command

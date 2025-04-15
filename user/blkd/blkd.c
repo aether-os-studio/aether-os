@@ -56,7 +56,7 @@ uint64_t blkd_read(uint64_t buf, uint64_t len, uint64_t offset, char *target_nam
 
         int ret = read(fd, (void *)tmp, buffer_size);
 
-        memcpy(buf, tmp + start_sector_read_start, len);
+        memcpy((void *)buf, tmp + start_sector_read_start, len);
 
         free(tmp);
 
