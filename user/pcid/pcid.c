@@ -52,7 +52,7 @@ user_scheme_t pcid_scheme;
 
 uint64_t pcid_daemon(daemon_t *daemon)
 {
-    printf("pcid daemon is running\n");
+    printf("pci daemon is running\n");
 
     init_scheme(&pcid_scheme);
 

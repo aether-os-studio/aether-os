@@ -173,7 +173,7 @@ int ahci_init_device(struct hba_port *port)
     struct hba_cmdh *cmd_header;
 
     uint16_t *data_in = (uint16_t *)alloc_dma(1);
-    uint16_t *data = physmap((uint64_t)data_in, 0x1000, PROT_READ | PROT_WRITE);
+    uint16_t *data = (uint16_t *)physmap((uint64_t)data_in, 0x1000, PROT_READ | PROT_WRITE);
 
     int slot = hba_prepare_cmd(port, &cmd_table, &cmd_header);
     hba_bind_sbuf(cmd_header, cmd_table, data, 512);
@@ -266,7 +266,7 @@ struct ahci_driver *ahci_driver_init(pci_bar_base_address *bar5)
     {
         printf("ahci driver init failed\n");
         free(ahci_drv);
-        return;
+        return NULL;
     }
 
     // hba->base[HBA_RGHC] |= HBA_RGHC_RESET;
@@ -328,12 +328,12 @@ struct ahci_driver *ahci_driver_init(pci_bar_base_address *bar5)
 
         hba_clear_reg(port_regs[HBA_RPxSERR]);
 
-        hba->ports[i] = port;
-
         if (!HBA_RPxSSTS_IF(port->ssts))
         {
             continue;
         }
+
+        hba->ports[i] = port;
 
         wait_until(!(port_regs[HBA_RPxCMD] & HBA_PxCMD_CR));
         port_regs[HBA_RPxCMD] |= HBA_PxCMD_FRE;
@@ -363,7 +363,7 @@ struct ahci_driver *drv;
 
 uint64_t ahcid_daemon(daemon_t *daemon)
 {
-    printf("ahcid daemon is running\n");
+    printf("ahci daemon is running\n");
 
     int fd = open("/scheme/pcid/ahci", 0, 0);
     if (fd < 0)
@@ -390,7 +390,7 @@ uint64_t ahcid_daemon(daemon_t *daemon)
         return -1;
     }
 
-    op_buffer = alloc_dma(0x400000UL / 0x1000UL);
+    op_buffer = (void *)alloc_dma(0x400000UL / 0x1000UL);
     physmap((uint64_t)op_buffer, 0x400000UL, PROT_READ | PROT_WRITE);
 
     drv = ahci_driver_init(bar5);

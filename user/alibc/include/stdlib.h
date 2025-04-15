@@ -1,6 +1,6 @@
 #pragma once
 
-#include <libsyscall.h>
+#include <stddef.h>
 
 static inline void *memcpy(void *To, void *From, long Num)
 {

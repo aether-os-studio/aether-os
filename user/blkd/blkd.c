@@ -10,6 +10,7 @@
 typedef struct blkdev
 {
     char dev_scheme_name[DEV_SCHEME_NAME_MAX];
+    uint64_t block_size;
 } blkdev_t;
 
 blkdev_t blk_devs[MAX_BLKDEV_NUM];
@@ -38,7 +39,25 @@ uint64_t blkd_read(uint64_t buf, uint64_t len, uint64_t offset, char *target_nam
             return (uint64_t)-EBADF;
         }
 
-        int ret = read(fd, (void *)buf, len);
+        uint64_t start = offset;
+        uint64_t end = offset + len;
+
+        uint64_t start_sector_read_start = offset % dev->block_size;
+
+        uint64_t start_sector_id = start / dev->block_size;
+        uint64_t end_sector_id = (end - 1) / dev->block_size;
+
+        uint64_t buffer_size = (end_sector_id - start_sector_id + 1) * dev->block_size;
+
+        uint8_t *tmp = malloc(buffer_size);
+
+        lseek(fd, start_sector_id * dev->block_size);
+
+        int ret = read(fd, (void *)tmp, buffer_size);
+
+        memcpy(buf, tmp + start_sector_read_start, len);
+
+        free(tmp);
 
         close(fd);
 
@@ -69,7 +88,27 @@ uint64_t blkd_write(uint64_t buf, uint64_t len, uint64_t offset, char *target_na
             return (uint64_t)-EBADF;
         }
 
-        int ret = write(fd, (void *)buf, len);
+        uint64_t start = offset;
+        uint64_t end = offset + len;
+
+        uint64_t start_sector_read_start = offset % dev->block_size;
+
+        uint64_t start_sector_id = start / dev->block_size;
+        uint64_t end_sector_id = (end - 1) / dev->block_size;
+
+        uint64_t buffer_size = (end_sector_id - start_sector_id + 1) * dev->block_size;
+
+        uint8_t *tmp = malloc(buffer_size);
+
+        lseek(fd, start_sector_id * dev->block_size);
+
+        int ret = read(fd, (void *)tmp, buffer_size);
+
+        memcpy(tmp + start_sector_read_start, (void *)buf, len);
+
+        ret = write(fd, tmp, buffer_size);
+
+        free(tmp);
 
         close(fd);
 
@@ -121,8 +160,11 @@ uint64_t blkd_ioctl(uint64_t cmd, uint64_t arg, uint64_t offset, char *target_na
         printf("regist blkdev %s\n", blkdev_name);
 
         blkdev_t *newdev = &blk_devs[blk_devnum];
-        blk_devnum++;
+
         strcpy(newdev->dev_scheme_name, target_name);
+        newdev->block_size = arg;
+
+        blk_devnum++;
     }
     break;
 
@@ -135,7 +177,7 @@ uint64_t blkd_daemon(daemon_t *daemon)
 {
     blk_devnum = 0;
 
-    printf("blkd daemon is running\n");
+    printf("blk daemon is running\n");
 
     init_scheme(&blkd_scheme);
 
@@ -167,6 +209,8 @@ uint64_t blkd_daemon(daemon_t *daemon)
             blkd_scheme.command.a = result;
             blkd_scheme.command.cmd = 0;
         }
+
+        __asm__ __volatile__("pause");
     }
 }
 

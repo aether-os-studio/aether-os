@@ -1,5 +1,6 @@
 #include <libsyscall.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 int main()
 {
@@ -22,7 +23,7 @@ int main()
     child_pid = fork();
     if (child_pid == 0)
     {
-        load_module("/usr/bin/pcid.exec");
+        load_module("/usr/bin/blkd.exec");
         exit(-1);
     }
     else
@@ -33,7 +34,7 @@ int main()
     child_pid = fork();
     if (child_pid == 0)
     {
-        load_module("/usr/bin/blkd.exec");
+        load_module("/usr/bin/pcid.exec");
         exit(-1);
     }
     else

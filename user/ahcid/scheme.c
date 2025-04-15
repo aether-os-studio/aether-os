@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include "ahci.h"
 
 user_scheme_t ahcid_scheme;
@@ -116,12 +117,20 @@ uint64_t ahcid_ioctl(uint64_t cmd, uint64_t arg, uint64_t offset, char *target_n
 
 uint64_t main_loop()
 {
-    // 绑定自己，/scheme/block/后跟的是访问自己的地址
-    int fd = open("/scheme/block//scheme/ahcid/0", 0, 0);
-    // 注册设备
-    ioctl(fd, SCHEME_IOCTL_REGIST_BLKDEV, 0);
+    for (uint32_t port = 0; port < drv->hba.ports_num; port++)
+    {
+        if (drv->hba.ports[port] == NULL)
+            continue;
 
-    close(fd);
+        char buf[30];
+        sprintf(buf, "/scheme/block//scheme/ahcid/%d", port);
+
+        int fd = open(buf, 0, 0);
+
+        ioctl(fd, SCHEME_IOCTL_REGIST_BLKDEV, drv->hba.ports[port]->device->block_size);
+
+        close(fd);
+    }
 
     while (1)
     {

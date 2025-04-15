@@ -19,7 +19,7 @@ static void *current_break = NULL;       // 当前堆顶地址
 // 自定义brk系统调用封装
 static void *sys_brk(void *addr)
 {
-    return (void *)enter_syscall(SYS_BRK, addr, 0, 0, 0, 0, 0);
+    return (void *)enter_syscall(SYS_BRK, (uint64_t)addr, 0, 0, 0, 0, 0);
 }
 
 // 请求堆扩展

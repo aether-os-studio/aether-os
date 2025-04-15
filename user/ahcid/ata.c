@@ -18,7 +18,7 @@ void sata_submit(struct hba_device *dev, struct blkio_req *io_req)
 
     int write = !!(io_req->flags & BLKIO_WRITE);
     int slot = hba_prepare_cmd(port, &table, &header);
-    hba_bind_sbuf(header, table, io_req->buf, io_req->len);
+    hba_bind_sbuf(header, table, (void *)io_req->buf, io_req->len);
 
     header->options |= HBA_CMDH_WRITE * write;
 

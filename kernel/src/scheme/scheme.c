@@ -4,12 +4,10 @@
 #include <irq/irq.h>
 #include <kprint.h>
 
-bool taskid_to_hasop[MAX_TASK_NUM];
 scheme_t taskid_to_user_schemes[MAX_TASK_NUM];
 
 void scheme_init()
 {
-    memset(taskid_to_hasop, 0, sizeof(taskid_to_hasop));
     memset(taskid_to_user_schemes, 0, sizeof(taskid_to_user_schemes));
 }
 

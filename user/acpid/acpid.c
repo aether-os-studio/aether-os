@@ -19,7 +19,7 @@ void *find_table(const char *name)
         uint64_t ptr = physmap(phys, sizeof(struct ACPISDTHeader), PROT_READ | PROT_WRITE);
         uint8_t signa[5] = {0};
         memcpy(signa, ((struct ACPISDTHeader *)ptr)->Signature, 4);
-        if (memcmp(signa, name, 4) == 0)
+        if (memcmp(signa, (char *)name, 4) == 0)
         {
             return (void *)ptr;
         }
@@ -33,7 +33,7 @@ uint64_t acpid_read(uint64_t buf, uint64_t len, uint64_t offset, char *target_na
     if (!ptr)
         return 0;
 
-    memcpy(buf, ptr, len);
+    memcpy((void *)buf, ptr, len);
     return len;
 }
 
@@ -59,7 +59,7 @@ uint64_t acpid_ioctl(uint64_t cmd, uint64_t arg, uint64_t offset, char *target_n
 
 uint64_t acpid_daemon(daemon_t *daemon)
 {
-    printf("acpid daemon is running\n");
+    printf("acpi daemon is running\n");
 
     bootstrap_info_t info;
     get_bootstrap_info(&info);

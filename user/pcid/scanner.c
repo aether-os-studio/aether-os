@@ -3,8 +3,6 @@
 #include <io.h>
 #include "pci.h"
 
-#define PCI_MCFG_MAX_ENTRIES_LEN 256
-
 MCFG_ENTRY *mcfg_entries[PCI_MCFG_MAX_ENTRIES_LEN];
 uint64_t mcfg_entries_len = 0;
 
