@@ -13,8 +13,6 @@ uint64_t ioapic_address;
 __attribute__((used, section(".limine_requests"))) static volatile struct limine_mp_request mp_request = {
     .id = LIMINE_MP_REQUEST,
     .revision = 0,
-    .response = NULL,
-    .flags = 1U,
 };
 
 void disable_pic()
@@ -218,6 +216,8 @@ void ap_entry(struct limine_mp_info *cpu)
 
     syscall_init();
 
+    local_apic_ap_init();
+
     tss_init();
     fsgsbase_init();
 
@@ -227,8 +227,6 @@ void ap_entry(struct limine_mp_info *cpu)
     {
         __asm__ __volatile__("pause");
     }
-
-    local_apic_ap_init();
 
     task_switch_to(NULL, NULL, idle_tasks[cpu->processor_id]);
 

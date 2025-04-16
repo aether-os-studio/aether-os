@@ -14,7 +14,7 @@ GDT_Table:
     .quad 0x0000000000000000 // 4 用户32位数据段描述符 0x30
     .quad 0x00cf9a000000ffff // 7 内核32位代码段描述符 0x38
     .quad 0x00cf92000000ffff // 8 内核32位数据段描述符 0x40
-    .fill 512, 8, 0          // 10-11 TSS(跳过了第9段)  重复十次填充8字节的空间，赋值为0   长模式下，每个TSS长度为128bit
+    .fill 65, 8, 0          // 10-11 TSS (跳过了第9段)  重复512次填充8字节的空间，赋值为0   长模式下，每个TSS长度为128bit
 GDT_END:
 
 .global GDT_POINTER
@@ -296,13 +296,6 @@ ENTRY(virtualization_exception)
     pushq $0
     pushq %rax
     leaq do_virtualization_exception(%rip), %rax    // 获取中断服务程序的地址
-    xchgq %rax, (%rsp)  // 把FUNC的地址换入栈中
-    jmp Err_Code
-
-ENTRY(timer_handler_exception)
-    pushq $0
-    pushq %rax
-    leaq timer_handler(%rip), %rax    // 获取中断服务程序的地址
     xchgq %rax, (%rsp)  // 把FUNC的地址换入栈中
     jmp Err_Code
 

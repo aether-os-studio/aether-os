@@ -6,12 +6,14 @@
 #include <mm/page.h>
 #include <task/signal.h>
 
-#define MAX_CPU_NUM 256
+#define MAX_CPU_NUM 32
 
 #define STACK_SIZE 8192UL
 
 #define USER_STACK_TOP 0x6ffffa000000
 #define USER_STACK_SIZE (1 * 1024 * 1024)
+
+#define IOBITMAP_SIZE (65536 / 8)
 
 typedef struct tss
 {
@@ -30,6 +32,7 @@ typedef struct tss
     uint64_t reserved2;
     uint16_t reserved3;
     uint16_t iomapbaseaddr;
+    uint8_t iomap[IOBITMAP_SIZE];
 } __attribute__((packed)) tss_t;
 
 typedef struct

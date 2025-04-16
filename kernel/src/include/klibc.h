@@ -11,9 +11,9 @@
 #include <syscall/errno.h>
 #include <irq/ptrace.h>
 
-#define container_of(ptr, type, member)                                     \
-    ({                                                                      \
-        decltype(((type *)0)->member) *p = (ptr);                           \
+#define container_of(ptr, type, member)                           \
+    ({                                                            \
+        typeof(((type *)0)->member) *p = (ptr);                   \
         (type *)((uint64_t)p - (uint64_t)&(((type *)0)->member)); \
     })
 
@@ -332,9 +332,9 @@ static inline unsigned char io_in8(unsigned short port)
     return ret;
 }
 
-static inline unsigned int io_in32(unsigned short port)
+static inline uint32_t io_in32(unsigned short port)
 {
-    unsigned int ret = 0;
+    uint32_t ret = 0;
     __asm__ __volatile__("inl	%%dx,	%0	\n\t"
                          "mfence			\n\t"
                          : "=a"(ret)
@@ -352,7 +352,7 @@ static inline void io_out8(unsigned short port, unsigned char value)
                          : "memory");
 }
 
-static inline void io_out32(unsigned short port, unsigned int value)
+static inline void io_out32(unsigned short port, uint32_t value)
 {
     __asm__ __volatile__("outl	%0,	%%dx	\n\t"
                          "mfence			\n\t"
@@ -369,8 +369,8 @@ static inline void io_out32(unsigned short port, unsigned int value)
 
 static inline uint64_t rdmsr(uint64_t address)
 {
-    unsigned int tmp0 = 0;
-    unsigned int tmp1 = 0;
+    uint32_t tmp0 = 0;
+    uint32_t tmp1 = 0;
     __asm__ __volatile__("rdmsr	\n\t" : "=d"(tmp0), "=a"(tmp1) : "c"(address) : "memory");
     return (uint64_t)tmp0 << 32 | tmp1;
 }

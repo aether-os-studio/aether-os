@@ -23,7 +23,7 @@ hardware_intr_controller apic_timer_controller = {
 };
 
 extern uint64_t cpu_count;
-static uint32_t cpu_idx = 0;
+static volatile uint32_t cpu_idx = 0;
 spinlock_t cpu_alloc_lock;
 
 uint32_t alloc_cpuid()
@@ -237,7 +237,7 @@ void task_switch_to(struct pt_regs *curr, task_t *prev, task_t *next)
     {
         // Start to switch
         tss[current_cpu_id].rsp0 = (uint64_t)(next->context + 1);
-        uint16_t value = next->userspace_io_allowed ? sizeof(tss_t) : 0xFFFF;
+        uint16_t value = next->userspace_io_allowed ? offsetof(tss_t, iomap) : 0xFFFF;
         tss[current_cpu_id].iomapbaseaddr = value;
 
         __asm__ __volatile__("movq %0, %%fs\n\t" ::"r"(next->thread->fs));
@@ -449,7 +449,7 @@ void sys_iopl(uint64_t level)
 
     current_task->userspace_io_allowed = allow;
 
-    uint16_t value = allow ? sizeof(tss_t) : 0xFFFF;
+    uint16_t value = allow ? offsetof(tss_t, iomap) : 0xFFFF;
 
     tss[current_cpu_id].iomapbaseaddr = value;
 }
