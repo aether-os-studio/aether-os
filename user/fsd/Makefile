@@ -9,4 +9,4 @@ all:
 	gcc $(CFLAGS) -c fatfs/ffunicode.c -o fatfs/ffunicode.o
 	gcc $(CFLAGS) -c fatfs/ff.c -o fatfs/ff.o
 	gcc $(CFLAGS) -c fatfs/fatfs.c -o fatfs/fatfs.o
-	ld $(shell find . -name "*.o") $(shell find $(CWD)/obj/ -name "*.o") -o fsd.exec	
+	ld fsd.o partition.o vfs/vfs.o vfs/dev.o iso9660/iso9660.o fatfs/diskio.o fatfs/ffsystem.o fatfs/ffunicode.o fatfs/ff.o fatfs/fatfs.o $(shell find $(CWD)/obj/ -name "*.o") -o fsd.exec	

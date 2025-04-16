@@ -67,7 +67,7 @@ uint64_t scheme_transfer(scheme_t *scheme, uint64_t cmd, uint64_t buffer, uint64
     uscheme = phys_to_virt(uscheme);
     user_scheme_command_t *command = &uscheme->command;
 
-    if (cmd == SCHEME_COMMAND_READ || cmd == SCHEME_COMMAND_WRITE)
+    if (cmd == SCHEME_COMMAND_READ || cmd == SCHEME_COMMAND_WRITE || cmd == SCHEME_COMMAND_READDIR)
     {
         uint64_t buffer_phys = translate_addr(get_current_page_dir(), buffer);
         if (buffer_phys == 0)

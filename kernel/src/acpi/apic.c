@@ -4,6 +4,8 @@
 #include <mm/page.h>
 #include <irq/irq.h>
 
+spinlock_t apu_startup_lock;
+
 bool x2apic_mode;
 uint64_t lapic_address;
 uint64_t ioapic_address;
@@ -67,11 +69,28 @@ uint64_t lapic_id()
     return x2apic_mode ? phy_id : (phy_id >> 24);
 }
 
+static inline void get_cpuid(uint32_t Mop, uint32_t Sop, uint32_t *a, uint32_t *b, uint32_t *c, uint32_t *d)
+{
+    __asm__ __volatile__("cpuid	\n\t"
+                         : "=a"(*a), "=b"(*b), "=c"(*c), "=d"(*d)
+                         : "0"(Mop), "2"(Sop));
+}
+
 uint64_t calibrated_timer_initial;
 
 void local_apic_init(bool is_print)
 {
-    x2apic_mode = (mp_request.response->flags & 1U) != 0;
+    uint32_t eax, ebx, ecx, edx;
+    get_cpuid(1, 0, &eax, &ebx, &ecx, &edx);
+
+    if (ecx & (1 << 21))
+        x2apic_mode = true;
+    else
+        x2apic_mode = false;
+
+    wrmsr(0x1b, rdmsr(0x1b) | (1 << 11));
+    if (x2apic_mode)
+        wrmsr(0x1b, rdmsr(0x1b) | (1 << 10));
 
     lapic_write(LAPIC_REG_TIMER, APIC_TIMER_INTERRUPT_VECTOR);
     lapic_write(LAPIC_REG_SPURIOUS, 0xff | 1 << 8);
@@ -98,6 +117,10 @@ void local_apic_init(bool is_print)
 
 void local_apic_ap_init()
 {
+    wrmsr(0x1b, rdmsr(0x1b) | (1 << 11));
+    if (x2apic_mode)
+        wrmsr(0x1b, rdmsr(0x1b) | (1 << 10));
+
     lapic_write(LAPIC_REG_TIMER, APIC_TIMER_INTERRUPT_VECTOR);
     lapic_write(LAPIC_REG_SPURIOUS, 0xff | 1 << 8);
     lapic_write(LAPIC_REG_TIMER_DIV, 11);
@@ -143,23 +166,12 @@ void lapic_timer_stop()
     lapic_write(LAPIC_REG_TIMER, (1 << 16));
 }
 
-void send_ipi(uint32_t apic_id, uint32_t command)
-{
-    if (x2apic_mode)
-    {
-        lapic_write(APIC_ICR_LOW, (((uint64_t)apic_id) << 32) | command);
-    }
-    else
-    {
-        lapic_write(APIC_ICR_HIGH, apic_id << 24);
-        lapic_write(APIC_ICR_LOW, command);
-    }
-}
-
 void apic_setup(MADT *madt)
 {
     lapic_address = phys_to_virt((uint64_t)madt->local_apic_address);
     page_map_range_to(get_kernel_page_dir(), lapic_address, madt->local_apic_address, PAGE_SIZE, KERNEL_PTE_FLAGS);
+
+    kinfo("Setup Local apic: %#018lx.", lapic_address);
 
     uint64_t current = 0;
     for (;;)
@@ -173,6 +185,7 @@ void apic_setup(MADT *madt)
         {
             MadtIOApic *ioapic = (MadtIOApic *)((uint64_t)(&madt->entries) + current);
             ioapic_address = ioapic->address;
+            break;
         }
         current += (uint64_t)header->length;
     }
@@ -194,6 +207,8 @@ void ap_entry(struct limine_mp_info *cpu)
 {
     cli();
 
+    kinfo("APU %d starting", cpu->processor_id);
+
     uint64_t cr3 = (uint64_t)get_kernel_page_dir()->table;
     __asm__ __volatile__("movq %0, %%cr3" ::"r"(cr3) : "memory");
 
@@ -201,18 +216,21 @@ void ap_entry(struct limine_mp_info *cpu)
 
     gdtidt_setup();
 
-    while (!task_initialized)
-    {
-    }
-
     syscall_init();
 
     tss_init();
     fsgsbase_init();
 
+    spin_unlock(&apu_startup_lock);
+
+    while (!task_initialized)
+    {
+        __asm__ __volatile__("pause");
+    }
+
     local_apic_ap_init();
 
-    task_switch_to(NULL, NULL, idle_tasks[current_cpu_id]);
+    task_switch_to(NULL, NULL, idle_tasks[cpu->processor_id]);
 
     while (1)
     {
@@ -235,6 +253,8 @@ uint32_t get_cpuid_by_lapic_id(uint32_t lapic_id)
         }
     }
 
+    kerror("Cannot get cpu id, lapic id = %d", lapic_id);
+
     return 0;
 }
 
@@ -245,9 +265,12 @@ void apu_startup(struct limine_mp_response *smp_response)
     for (uint64_t i = 0; i < smp_response->cpu_count; i++)
     {
         struct limine_mp_info *cpu = smp_response->cpus[i];
-        cpuid_to_lapicid[i] = cpu->lapic_id;
+        cpuid_to_lapicid[cpu->processor_id] = cpu->lapic_id;
+
         if (cpu->lapic_id == smp_response->bsp_lapic_id)
             continue;
+
+        spin_lock(&apu_startup_lock);
 
         cpu->goto_address = ap_entry;
     }
@@ -255,5 +278,7 @@ void apu_startup(struct limine_mp_response *smp_response)
 
 void smp_init()
 {
+    spin_init(&apu_startup_lock);
+
     apu_startup(mp_request.response);
 }

@@ -18,15 +18,21 @@ task_t *idle_tasks[MAX_CPU_NUM];
 
 spinlock_t fork_lock;
 
+hardware_intr_controller apic_timer_controller = {
+    .install = ioapic_add,
+};
+
 extern uint64_t cpu_count;
+static uint32_t cpu_idx = 0;
+spinlock_t cpu_alloc_lock;
 
 uint32_t alloc_cpuid()
 {
-    static uint32_t i = 0;
-    uint32_t ret = i++;
-    if (i >= cpu_count)
-        i = 0;
-    return ret;
+    spin_lock(&cpu_alloc_lock);
+    uint32_t idx = cpu_idx;
+    cpu_idx = (cpu_idx + 1) % cpu_count;
+    spin_unlock(&cpu_alloc_lock);
+    return idx;
 }
 
 task_t *get_free_task()
@@ -50,7 +56,7 @@ task_t *task_search(task_state_t state, uint32_t cpu_id)
 {
     task_t *task = NULL;
 
-    for (size_t i = 0; i < MAX_TASK_NUM; i++)
+    for (size_t i = cpu_count; i < MAX_TASK_NUM; i++)
     {
         task_t *ptr = tasks[i];
         if (ptr == NULL)
@@ -107,10 +113,10 @@ task_t *task_create(const char *name, void (*entry)(), uint64_t uid)
     task->waitpid = 0;
     task->syscall_stack = phys_to_virt(alloc_frames(STACK_SIZE / PAGE_SIZE)) + STACK_SIZE;
     task->on_cpu = alloc_cpuid();
-    task->pgdir = clone_directory(get_kernel_page_dir());
+    task->pgdir = get_kernel_page_dir();
     task->state = TASK_READY;
     task->fpu = (fpu_context *)phys_to_virt(alloc_frames(1));
-    memset(task->fpu, 0, sizeof(fpu_context));
+    memset(task->fpu, 0, PAGE_SIZE);
     task->fpu->mxscr = 0x1f80;
     task->fpu->fcw = 0x037f;
 
@@ -178,9 +184,9 @@ bool task_initialized = false;
 void task_init()
 {
     memset(tasks, 0, sizeof(tasks));
+    memset(idle_tasks, 0, sizeof(idle_tasks));
 
-    can_schedule = true;
-
+    spin_init(&cpu_alloc_lock);
     spin_init(&fork_lock);
     list_init(&block_list);
 
@@ -190,9 +196,11 @@ void task_init()
     }
     task_create("init", init_thread, NORMAL_USER);
 
-    irq_register(APIC_TIMER_INTERRUPT_VECTOR, timer_handler, 0, NULL, "APIC TIMER");
+    irq_register(APIC_TIMER_INTERRUPT_VECTOR, timer_handler, 0, &apic_timer_controller, "APIC TIMER");
 
     task_initialized = true;
+
+    can_schedule = true;
 
     cli();
 
@@ -222,13 +230,14 @@ void task_switch_to(struct pt_regs *curr, task_t *prev, task_t *next)
         __asm__ __volatile__("fxsave (%0)" ::"r"(prev->fpu));
     }
 
+    if (!next)
+        kerror("next should not be NULL");
+
     if (can_schedule)
     {
         // Start to switch
-        write_kgsbase((uint64_t)next);
-
-        tss[current_cpu_id].rsp0 = (uint64_t)next->context;
-        uint16_t value = current_task->userspace_io_allowed ? sizeof(tss_t) : 0xFFFF;
+        tss[current_cpu_id].rsp0 = (uint64_t)(next->context + 1);
+        uint16_t value = next->userspace_io_allowed ? sizeof(tss_t) : 0xFFFF;
         tss[current_cpu_id].iomapbaseaddr = value;
 
         __asm__ __volatile__("movq %0, %%fs\n\t" ::"r"(next->thread->fs));
@@ -242,6 +251,8 @@ void task_switch_to(struct pt_regs *curr, task_t *prev, task_t *next)
         __asm__ __volatile__("fxrstor (%0)" ::"r"(next->fpu));
 
         __asm__ __volatile__("movq %0, %%cr3\n\t" ::"r"(next->pgdir->table));
+
+        write_kgsbase((uint64_t)next);
 
         __asm__ __volatile__(
             "movq %0, %%rsp\n\t"
@@ -265,12 +276,10 @@ void task_exit(int code)
     current_task->status = code;
 
     task_t *parent = tasks[current_task->parent_task_id];
-    if (parent->state == TASK_BLOCKING && parent->waitpid == 0 || parent->waitpid == current_task->task_id)
+    if (parent->state == TASK_BLOCKING && (parent->waitpid == 0 || parent->waitpid == current_task->task_id))
     {
         task_unblock(parent, EOK);
     }
-
-    free_page_table_recursive(current_task->pgdir, 4);
 
     task_t *next = task_search(TASK_READY, current_cpu_id);
 
@@ -326,8 +335,6 @@ void task_unblock(task_t *task, int reason)
 
 uint64_t sys_fork(struct pt_regs *regs)
 {
-    cli();
-
     can_schedule = false;
 
     spin_lock(&fork_lock);
@@ -345,7 +352,7 @@ uint64_t sys_fork(struct pt_regs *regs)
 
     child->state = TASK_READY;
     child->fpu = (fpu_context *)phys_to_virt(alloc_frames(1));
-    memcpy(child->fpu, current_task->fpu, sizeof(fpu_context));
+    memcpy(child->fpu, current_task->fpu, PAGE_SIZE);
 
     child->pgdir = clone_directory(get_current_page_dir());
 
@@ -387,7 +394,7 @@ uint64_t sys_waitpid(uint64_t pid, int *status)
     {
         bool has_child = false;
 
-        for (uint64_t i = cpu_count + 1; i < MAX_TASK_NUM; i++)
+        for (uint64_t i = cpu_count; i < MAX_TASK_NUM; i++)
         {
             task_t *ptr = tasks[i];
             if (ptr == NULL)
@@ -423,6 +430,8 @@ uint64_t sys_waitpid(uint64_t pid, int *status)
 rollback:
     *status = (int)child->status;
     uint32_t ret = child->task_id;
+
+    free_page_table_recursive(child->pgdir, 4);
 
     free_frames((uint64_t)child, 1);
 

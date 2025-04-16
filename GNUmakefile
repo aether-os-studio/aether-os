@@ -8,7 +8,7 @@ KVM ?= 0
 SUDO ?= 0
 
 # Default user QEMU flags. These are appended to the QEMU command calls.
-QEMUFLAGS := -M q35 -cpu max -m 4G -smp $(SMP) -d cpu_reset
+QEMUFLAGS := -M q35 -cpu max -m 4G -smp $(SMP)
 
 ifeq ($(DEBUG), 1)
 QEMUFLAGS += -s -S

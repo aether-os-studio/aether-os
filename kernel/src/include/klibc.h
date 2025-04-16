@@ -14,7 +14,7 @@
 #define container_of(ptr, type, member)                                     \
     ({                                                                      \
         decltype(((type *)0)->member) *p = (ptr);                           \
-        (type *)((unsigned long)p - (unsigned long)&(((type *)0)->member)); \
+        (type *)((uint64_t)p - (uint64_t)&(((type *)0)->member)); \
     })
 
 struct List
@@ -147,7 +147,7 @@ static inline int memcmp(void *FirstPart, void *SecondPart, long Count)
 static inline void *memset(void *Address, unsigned char C, long Count)
 {
     int d0, d1;
-    unsigned long tmp = C * 0x0101010101010101UL;
+    uint64_t tmp = C * 0x0101010101010101UL;
     __asm__ __volatile__("cld	\n\t"
                          "rep	\n\t"
                          "stosq	\n\t"
@@ -306,17 +306,17 @@ static inline int strlen(char *String)
     return __res;
 }
 
-static inline unsigned long bit_set(unsigned long *addr, unsigned long nr)
+static inline uint64_t bit_set(uint64_t *addr, uint64_t nr)
 {
     return *addr | (1UL << nr);
 }
 
-static inline unsigned long bit_get(unsigned long *addr, unsigned long nr)
+static inline uint64_t bit_get(uint64_t *addr, uint64_t nr)
 {
     return *addr & (1UL << nr);
 }
 
-static inline unsigned long bit_clean(unsigned long *addr, unsigned long nr)
+static inline uint64_t bit_clean(uint64_t *addr, uint64_t nr)
 {
     return *addr & (~(1UL << nr));
 }
@@ -367,29 +367,29 @@ static inline void io_out32(unsigned short port, unsigned int value)
 #define port_outsw(port, buffer, nr) \
     __asm__ __volatile__("cld;rep;outsw;mfence;" ::"d"(port), "S"(buffer), "c"(nr) : "memory")
 
-static inline unsigned long rdmsr(unsigned long address)
+static inline uint64_t rdmsr(uint64_t address)
 {
     unsigned int tmp0 = 0;
     unsigned int tmp1 = 0;
     __asm__ __volatile__("rdmsr	\n\t" : "=d"(tmp0), "=a"(tmp1) : "c"(address) : "memory");
-    return (unsigned long)tmp0 << 32 | tmp1;
+    return (uint64_t)tmp0 << 32 | tmp1;
 }
 
-static inline void wrmsr(unsigned long address, unsigned long value)
+static inline void wrmsr(uint64_t address, uint64_t value)
 {
     __asm__ __volatile__("wrmsr	\n\t" ::"d"(value >> 32), "a"(value & 0xffffffff), "c"(address) : "memory");
 }
 
-static inline unsigned long get_rsp()
+static inline uint64_t get_rsp()
 {
-    unsigned long tmp = 0;
+    uint64_t tmp = 0;
     __asm__ __volatile__("movq	%%rsp, %0	\n\t" : "=r"(tmp)::"memory");
     return tmp;
 }
 
-static inline unsigned long get_rflags()
+static inline uint64_t get_rflags()
 {
-    unsigned long tmp = 0;
+    uint64_t tmp = 0;
     __asm__ __volatile__("pushfq	\n\t"
                          "movq	(%%rsp), %0	\n\t"
                          "popfq	\n\t"
@@ -399,9 +399,9 @@ static inline unsigned long get_rflags()
     return tmp;
 }
 
-static inline long verify_area(unsigned char *addr, unsigned long size)
+static inline long verify_area(unsigned char *addr, uint64_t size)
 {
-    if (((unsigned long)addr + size) <= (unsigned long)0x00007fffffffffff)
+    if (((uint64_t)addr + size) <= (uint64_t)0x00007fffffffffff)
         return 1;
     else
         return 0;

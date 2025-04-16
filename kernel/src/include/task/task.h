@@ -8,7 +8,7 @@
 
 #define MAX_CPU_NUM 256
 
-#define STACK_SIZE 16384
+#define STACK_SIZE 8192UL
 
 #define USER_STACK_TOP 0x6ffffa000000
 #define USER_STACK_SIZE (1 * 1024 * 1024)

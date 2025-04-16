@@ -352,5 +352,5 @@ void syscall_init()
     wrmsr(MSR_LSTAR, (uint64_t)syscall_exception);
 
     // 4. 设置 SYSCALL_MASK MSR (RFLAGS 掩码)
-    // wrmsr(MSR_SYSCALL_MASK, (1 << 9));
+    wrmsr(MSR_SYSCALL_MASK, (1 << 9));
 }

@@ -163,8 +163,10 @@ int irq_register(uint8_t irq_num, void (*handler)(uint8_t irq_num, uint64_t para
 
     if (p->controller)
     {
-        p->controller->install(irq_num, irq_num - 32);
-        p->controller->enable(irq_num);
+        if (p->controller->install)
+            p->controller->install(irq_num, irq_num - 32);
+        if (p->controller->enable)
+            p->controller->enable(irq_num);
     }
 
     return 0;
