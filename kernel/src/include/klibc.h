@@ -1,7 +1,7 @@
 #ifndef __LIB_H__
 #define __LIB_H__
 
-#define LIMINE_API_REVISION 3
+#include "settings.h"
 
 #include <limine.h>
 #include <stdint.h>

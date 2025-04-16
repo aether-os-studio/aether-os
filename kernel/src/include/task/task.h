@@ -6,8 +6,6 @@
 #include <mm/page.h>
 #include <task/signal.h>
 
-#define MAX_CPU_NUM 32
-
 #define STACK_SIZE 8192UL
 
 #define USER_STACK_TOP 0x6ffffa000000

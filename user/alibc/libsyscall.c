@@ -81,7 +81,7 @@ int getdents(int fd, void *buf, int count)
 
 void *brk(uint64_t addr)
 {
-    return enter_syscall(SYS_BRK, addr, 0, 0, 0, 0, 0);
+    return (void *)enter_syscall(SYS_BRK, addr, 0, 0, 0, 0, 0);
 }
 
 int fork()
@@ -96,7 +96,7 @@ void iopl(uint64_t level)
 
 int waitpid(int pid, int *status)
 {
-    enter_syscall(SYS_WAITPID, (uint64_t)pid, (uint64_t)status, 0, 0, 0, 0);
+    return (int)enter_syscall(SYS_WAITPID, (uint64_t)pid, (uint64_t)status, 0, 0, 0, 0);
 }
 
 void load_module(const char *name)
@@ -131,5 +131,5 @@ uint64_t alloc_dma(uint64_t count)
 
 void free_dma(uint64_t addr, uint64_t count)
 {
-    return enter_syscall(SYS_DMA_FREE, addr, count, 0, 0, 0, 0);
+    enter_syscall(SYS_DMA_FREE, addr, count, 0, 0, 0, 0);
 }

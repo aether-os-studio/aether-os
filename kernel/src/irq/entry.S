@@ -1,20 +1,21 @@
 #include "asm.h"
+#include "settings.h"
 
 .section .data
 .align 16
 .global GDT_Table
 
 GDT_Table:
-    .quad 0x0000000000000000 // 0 空描述符 0x00
-    .quad 0x0020980000000000 // 1 内核64位代码段描述符 0x08
-    .quad 0x0000920000000000 // 2 内核64位数据段描述符 0x10
-    .quad 0x0000f20000000000 // 6 用户64位数据段描述符 0x18
-    .quad 0x0020f80000000000 // 5 用户64位代码段描述符 0x20
-    .quad 0x0000000000000000 // 3 用户32位代码段描述符 0x28
-    .quad 0x0000000000000000 // 4 用户32位数据段描述符 0x30
-    .quad 0x00cf9a000000ffff // 7 内核32位代码段描述符 0x38
-    .quad 0x00cf92000000ffff // 8 内核32位数据段描述符 0x40
-    .fill 65, 8, 0          // 10-11 TSS (跳过了第9段)  重复512次填充8字节的空间，赋值为0   长模式下，每个TSS长度为128bit
+    .quad 0x0000000000000000
+    .quad 0x0020980000000000
+    .quad 0x0000920000000000
+    .quad 0x0000f20000000000
+    .quad 0x0020f80000000000
+    .quad 0x0000000000000000
+    .quad 0x0000000000000000
+    .quad 0x00cf9a000000ffff
+    .quad 0x00cf92000000ffff
+    .fill (MAX_CPU_NUM * 2 + 1), 8, 0
 GDT_END:
 
 .global GDT_POINTER

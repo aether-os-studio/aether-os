@@ -30,7 +30,11 @@ uint32_t alloc_cpuid()
 {
     spin_lock(&cpu_alloc_lock);
     uint32_t idx = cpu_idx;
+#ifdef ALL_IN_ONE
+    idx = 0;
+#else
     cpu_idx = (cpu_idx + 1) % cpu_count;
+#endif
     spin_unlock(&cpu_alloc_lock);
     return idx;
 }

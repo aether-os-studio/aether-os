@@ -37,6 +37,9 @@ scheme_t *scheme_open(const char *name)
         if (taskid_to_user_schemes[i].name[0] == '\0')
             continue;
 
+        if (taskid_to_user_schemes[i].target_name[0] != '\0')
+            continue;
+
         if (!strncmp(name, taskid_to_user_schemes[i].name, strlen(taskid_to_user_schemes[i].name)))
         {
             uint64_t idx = strlen(taskid_to_user_schemes[i].name) + 1;

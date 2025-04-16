@@ -32,7 +32,7 @@ vfs_node_t fatfs_get_node_by_number(int number)
 int fatfs_mkdir(void *parent, const char *name, vfs_node_t node)
 {
     file_t p = parent;
-    char *new_path = malloc(strlen(p->path) + strlen(name) + 1 + 1);
+    char *new_path = malloc(strlen(p->path) + strlen((char *)name) + 1 + 1);
     sprintf(new_path, "%s/%s", p->path, name);
     FRESULT res = f_mkdir(new_path);
     free(new_path);
@@ -46,7 +46,7 @@ int fatfs_mkdir(void *parent, const char *name, vfs_node_t node)
 int fatfs_mkfile(void *parent, const char *name, vfs_node_t node)
 {
     file_t p = parent;
-    char *new_path = malloc(strlen(p->path) + strlen(name) + 1 + 1);
+    char *new_path = malloc(strlen(p->path) + strlen((char *)name) + 1 + 1);
     sprintf(new_path, "%s/%s", p->path, name);
     FIL fp;
     FRESULT res = f_open(&fp, new_path, FA_CREATE_NEW);
@@ -92,7 +92,7 @@ size_t fatfs_writefile(file_t file, const void *addr, size_t offset, size_t size
 void fatfs_open(void *parent, const char *name, vfs_node_t node)
 {
     file_t p = parent;
-    char *new_path = malloc(strlen(p->path) + strlen(name) + 1 + 1);
+    char *new_path = malloc(strlen(p->path) + strlen((char *)name) + 1 + 1);
     file_t new = malloc(sizeof(struct file));
     sprintf(new_path, "%s/%s", p->path, name);
     void *fp = NULL;
