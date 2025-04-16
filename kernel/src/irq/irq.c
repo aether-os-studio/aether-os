@@ -137,7 +137,7 @@ void c_do_irq(struct pt_regs *regs, uint8_t irq_num)
 
     cli();
 
-    send_eoi();
+    send_eoi((uint32_t)irq_num);
 
     if (current_task->need_schedule)
     {

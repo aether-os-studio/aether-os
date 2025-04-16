@@ -235,7 +235,7 @@ uint64_t nanoTime();
 #define APIC_ICR_HIGH 0x310
 
 void apic_setup(MADT *madt);
-void send_eoi();
+void send_eoi(uint32_t irq);
 uint64_t lapic_id();
 
 void ioapic_enable(uint8_t vector);

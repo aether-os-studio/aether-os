@@ -19,6 +19,14 @@ void disable_pic()
 {
     io_out8(0x21, 0xff);
     io_out8(0xa1, 0xff);
+
+    io_out8(0x20, 0x20);
+    io_out8(0xa0, 0x20);
+
+    kdebug("8259A Masked.");
+
+    io_out8(0x22, 0x70);
+    io_out8(0x23, 0x01);
 }
 
 static void ioapic_write(uint32_t reg, uint32_t value)
@@ -153,9 +161,10 @@ void ioapic_disable(uint8_t vector)
     ioapic_write(index + 1, (uint32_t)(value >> 32));
 }
 
-void send_eoi()
+void send_eoi(uint32_t irq)
 {
     lapic_write(0xb0, 0);
+    *(uint32_t *)(ioapic_address + 0x40) = irq;
 }
 
 void lapic_timer_stop()
@@ -187,6 +196,7 @@ void apic_setup(MADT *madt)
         }
         current += (uint64_t)header->length;
     }
+
     disable_pic();
     local_apic_init(true);
     io_apic_init();
