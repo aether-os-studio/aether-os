@@ -144,6 +144,7 @@ void task_exit(int code);
 uint64_t sys_fork(struct pt_regs *regs);
 uint64_t sys_waitpid(uint64_t pid, int *status);
 void sys_iopl(uint64_t level);
+void sys_yield();
 
 void tss_init();
 

@@ -238,6 +238,11 @@ void apic_setup(MADT *madt);
 void send_eoi(uint32_t irq);
 uint64_t lapic_id();
 
+void lapic_write(uint32_t reg, uint32_t value);
+uint32_t lapic_read(uint32_t reg);
+
+uint32_t get_cpuid_by_lapic_id(uint32_t lapic_id);
+
 void ioapic_enable(uint8_t vector);
 void ioapic_add(uint8_t vector, uint32_t irq);
 

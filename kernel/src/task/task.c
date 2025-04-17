@@ -20,6 +20,7 @@ spinlock_t fork_lock;
 
 hardware_intr_controller apic_timer_controller = {
     .install = ioapic_add,
+    .enable = ioapic_enable,
 };
 
 extern uint64_t cpu_count;
@@ -149,11 +150,17 @@ task_t *task_create(const char *name, void (*entry)(), uint64_t uid)
     return task;
 }
 
+void sys_yield()
+{
+    __asm__ __volatile__("int %0\n\t" ::"i"(APIC_TIMER_INTERRUPT_VECTOR));
+}
+
 void idle_thread()
 {
     while (1)
     {
-        __asm__ __volatile__("sti\n\thlt\n\t");
+        sti();
+        __asm__ __volatile__("pause");
     }
 }
 
@@ -320,7 +327,7 @@ int task_block(task_t *task, struct List *blist, task_state_t state, int timeout
     {
         sti();
 
-        __asm__ __volatile__("int %0\n\t" ::"i"(APIC_TIMER_INTERRUPT_VECTOR));
+        sys_yield();
     }
 
     return task->status;

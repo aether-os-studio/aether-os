@@ -2,6 +2,7 @@
 #include <mm/hhdm.h>
 #include <mm/page.h>
 #include <irq/irq.h>
+#include <task/task.h>
 #include <kprint.h>
 
 scheme_t taskid_to_user_schemes[MAX_TASK_NUM];
@@ -97,7 +98,7 @@ uint64_t scheme_transfer(scheme_t *scheme, uint64_t cmd, uint64_t buffer, uint64
         sti();
 
         // Wait for the command to be processed
-        __asm__ __volatile__("int %0\n\t" ::"i"(APIC_TIMER_INTERRUPT_VECTOR));
+        sys_yield();
     }
 
     return command->a;
