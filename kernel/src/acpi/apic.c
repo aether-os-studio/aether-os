@@ -89,9 +89,9 @@ void local_apic_init(bool is_print)
 
     lapic_timer_stop();
 
-    lapic_write(LAPIC_REG_TIMER, APIC_TIMER_INTERRUPT_VECTOR);
     lapic_write(LAPIC_REG_SPURIOUS, 0xff | (1 << 8));
     lapic_write(LAPIC_REG_TIMER_DIV, 11);
+    lapic_write(LAPIC_REG_TIMER, APIC_TIMER_INTERRUPT_VECTOR);
 
     uint64_t b = nanoTime();
     lapic_write(LAPIC_REG_TIMER_INITCNT, ~((uint32_t)0));
@@ -122,11 +122,9 @@ void local_apic_ap_init()
 
     lapic_timer_stop();
 
-    lapic_write(LAPIC_REG_TIMER, APIC_TIMER_INTERRUPT_VECTOR);
     lapic_write(LAPIC_REG_SPURIOUS, 0xff | (1 << 8));
     lapic_write(LAPIC_REG_TIMER_DIV, 11);
-
-    lapic_write(LAPIC_REG_TIMER, lapic_read(LAPIC_REG_TIMER) & ~(0x10000UL));
+    lapic_write(LAPIC_REG_TIMER, APIC_TIMER_INTERRUPT_VECTOR);
 
     lapic_write(LAPIC_REG_TIMER, lapic_read(LAPIC_REG_TIMER) | (1 << 17));
     lapic_write(LAPIC_REG_TIMER_INITCNT, calibrated_timer_initial);

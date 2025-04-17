@@ -137,7 +137,7 @@ task_t *get_task(uint64_t pid);
 int task_block(task_t *task, struct List *blist, task_state_t state, int timeout_ms);
 void task_unblock(task_t *task, int reason);
 
-void task_to_user_mode(uint64_t entry, uint64_t load_start, uint64_t load_end);
+void task_to_user_mode(uint64_t entry, uint64_t load_start, uint64_t load_end, char **argv, char **envp);
 
 void task_exit(int code);
 

@@ -181,7 +181,7 @@ uint64_t sys_getdents(uint64_t fd, uint64_t buf, uint64_t size)
     return scheme_readdir(current_task->schemes[fd], buf, size);
 }
 
-extern void sys_load_module(const char *);
+extern void sys_load_module(const char *, char **, char **);
 
 void *real_memcpy(void *dst, void *src, long len)
 {
@@ -243,7 +243,7 @@ void syscall_handler(struct pt_regs *regs, struct pt_regs *user_regs)
         break;
 
     case SYS_LOAD_MODULE:
-        sys_load_module((const char *)arg1);
+        sys_load_module((const char *)arg1, (char **)arg2, (char **)arg3);
         regs->rax = 0;
         break;
 

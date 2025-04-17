@@ -132,7 +132,7 @@ int waitpid(int pid, int *status);
 
 uint64_t virttophys(uint64_t virt);
 
-void load_module(const char *name);
+void load_module(const char *name, char *argv[], char *envp[]);
 
 void get_bootstrap_info(bootstrap_info_t *info);
 

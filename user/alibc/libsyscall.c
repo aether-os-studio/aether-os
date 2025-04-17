@@ -99,9 +99,9 @@ int waitpid(int pid, int *status)
     return (int)enter_syscall(SYS_WAITPID, (uint64_t)pid, (uint64_t)status, 0, 0, 0, 0);
 }
 
-void load_module(const char *name)
+void load_module(const char *name, char *argv[], char *envp[])
 {
-    enter_syscall(SYS_LOAD_MODULE, (uint64_t)name, 0, 0, 0, 0, 0);
+    enter_syscall(SYS_LOAD_MODULE, (uint64_t)name, (uint64_t)argv, (uint64_t)envp, 0, 0, 0);
 }
 
 void get_bootstrap_info(bootstrap_info_t *info)

@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-int main()
+int main(int argc, char **argv)
 {
     printf("init task is running\n");
 
@@ -12,7 +12,7 @@ int main()
     child_pid = fork();
     if (child_pid == 0)
     {
-        load_module("/usr/bin/acpid.exec");
+        load_module("/usr/bin/acpid.exec", NULL, NULL);
     }
     else
     {
@@ -22,7 +22,7 @@ int main()
     child_pid = fork();
     if (child_pid == 0)
     {
-        load_module("/usr/bin/blkd.exec");
+        load_module("/usr/bin/blkd.exec", NULL, NULL);
     }
     else
     {
@@ -32,7 +32,7 @@ int main()
     child_pid = fork();
     if (child_pid == 0)
     {
-        load_module("/usr/bin/pcid.exec");
+        load_module("/usr/bin/pcid.exec", NULL, NULL);
     }
     else
     {
@@ -42,7 +42,7 @@ int main()
     child_pid = fork();
     if (child_pid == 0)
     {
-        load_module("/usr/bin/ahcid.exec");
+        load_module("/usr/bin/ahcid.exec", NULL, NULL);
     }
     else
     {
@@ -52,7 +52,7 @@ int main()
     child_pid = fork();
     if (child_pid == 0)
     {
-        load_module("/usr/bin/fsd.exec");
+        load_module("/usr/bin/fsd.exec", NULL, NULL);
     }
     else
     {

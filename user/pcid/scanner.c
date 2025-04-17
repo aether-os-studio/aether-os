@@ -465,7 +465,7 @@ void pci_scan_bus(uint16_t segment_group, uint8_t bus)
         pci_scan_function(segment_group, bus, i, 0);
         uint32_t pci_address = segment_bus_device_functon_to_pci_address(segment_group, bus, i, 0);
         uint64_t mmio_addr = get_mmio_address(pci_address, 0x0c);
-        if (*(uint32_t *)mmio_addr & (1 << 23))
+        if (*(uint32_t *)mmio_addr & (1UL << 23))
         {
             for (int j = 1; j < 8; j++)
             {
@@ -480,7 +480,7 @@ void pci_scan_segment(uint16_t segment_group)
     pci_scan_bus(segment_group, 0);
     uint32_t pci_address = segment_bus_device_functon_to_pci_address(segment_group, 0, 0, 0);
     uint64_t mmio_addr = get_mmio_address(pci_address, 0x0c);
-    if (*(uint32_t *)mmio_addr & (1 << 23))
+    if (*(uint32_t *)mmio_addr & (1UL << 23))
     {
         for (int i = 1; i < 8; i++)
         {
@@ -609,20 +609,22 @@ void init_pci(MCFG *mcfg_buffer, bool pcie)
             pci_scan_segment(segment_group);
         }
     }
-
-    printf("Scanning PCI bus\n");
-    // Scan PCI bus
-    uint32_t BUS, Equipment, F;
-    for (BUS = 0; BUS < 256; BUS++)
+    else
     {
-        for (Equipment = 0; Equipment < 32; Equipment++)
+        printf("Scanning PCI bus\n");
+        // Scan PCI bus
+        uint32_t BUS, Equipment, F;
+        for (BUS = 0; BUS < 256; BUS++)
         {
-            for (F = 0; F < 8; F++)
+            for (Equipment = 0; Equipment < 32; Equipment++)
             {
-                pci_config0(BUS, F, Equipment, 0);
-                if (inl(PCI_DATA_PORT) != 0xFFFFFFFF)
+                for (F = 0; F < 8; F++)
                 {
-                    pci_scan_device_legacy(BUS, Equipment, F);
+                    pci_config0(BUS, F, Equipment, 0);
+                    if (inl(PCI_DATA_PORT) != 0xFFFFFFFF)
+                    {
+                        pci_scan_device_legacy(BUS, Equipment, F);
+                    }
                 }
             }
         }

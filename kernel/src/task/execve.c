@@ -5,11 +5,14 @@
 #include <task/task.h>
 #include <irq/gate.h>
 
-void task_to_user_mode(uint64_t addr, uint64_t load_start, uint64_t load_end)
+void task_to_user_mode(uint64_t addr, uint64_t load_start, uint64_t load_end, char **argv, char **envp)
 {
     cli();
 
     uint64_t stack = (uint64_t)current_task->context;
+
+    uint64_t backup_stack = stack;
+
     stack -= sizeof(struct pt_regs);
 
     struct pt_regs *iframe = (struct pt_regs *)stack;
@@ -20,6 +23,31 @@ void task_to_user_mode(uint64_t addr, uint64_t load_start, uint64_t load_end)
     iframe->es = SELECTOR_USER_DS;
     iframe->rflags = (0 << 12) | (0b10) | (1 << 9);
     iframe->rip = addr;
+
+    iframe->rdi = 0;
+    if (argv != NULL)
+    {
+        int argc = 0;
+
+        char **dst_argv = (char **)(iframe->rsp - sizeof(char **) * 8);
+        uint64_t str_addr = (uint64_t)dst_argv;
+
+        for (argc = 0; argc < 8 && argv[argc] != NULL; ++argc)
+        {
+            if (*argv[argc] = '\0')
+                break;
+
+            int argv_len = strlen(argv[argc]) + 1;
+            strncpy((void *)str_addr, argv[argc], argv_len);
+            str_addr -= argv_len;
+            dst_argv[argc] = (char *)str_addr;
+            ((char *)str_addr)[argv_len] = '\0';
+        }
+
+        iframe->rsp = str_addr - 8;
+        iframe->rdi = argc;
+        iframe->rsi = (uint64_t)dst_argv;
+    }
 
     current_task->thread->gs = SELECTOR_USER_DS;
     current_task->thread->fs = SELECTOR_USER_DS;
@@ -44,7 +72,7 @@ void task_to_user_mode(uint64_t addr, uint64_t load_start, uint64_t load_end)
                          "jmp ret_from_intr" ::"r"(iframe));
 }
 
-void load_module(struct limine_file *module)
+void load_module(struct limine_file *module, char **argv, char **envp)
 {
     const Elf64_Ehdr *ehdr = (const Elf64_Ehdr *)module->address;
 
@@ -116,5 +144,5 @@ void load_module(struct limine_file *module)
     }
 
     char buf[128];
-    task_to_user_mode(e_entry, load_start, load_end);
+    task_to_user_mode(e_entry, load_start, load_end, argv, envp);
 }

@@ -17,13 +17,13 @@ void init_module()
             struct limine_file *module = response->modules[i];
             if (!strcmp(module->path, "/usr/bin/initd.exec"))
             {
-                load_module(module);
+                load_module(module, NULL, NULL);
             }
         }
     }
 }
 
-void sys_load_module(const char *name)
+void sys_load_module(const char *name, char **argv, char **envp)
 {
     struct limine_module_response *response = module_request.response;
     if (response)
@@ -34,7 +34,7 @@ void sys_load_module(const char *name)
             if (!strcmp(module->path, name))
             {
                 strcpy(current_task->name, name);
-                load_module(module);
+                load_module(module, argv, envp);
             }
         }
 

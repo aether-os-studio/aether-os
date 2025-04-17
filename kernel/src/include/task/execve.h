@@ -35,4 +35,4 @@ typedef struct
 
 #define PT_LOAD 1
 
-void load_module(struct limine_file *module);
+void load_module(struct limine_file *module, char **argv, char **envp);
