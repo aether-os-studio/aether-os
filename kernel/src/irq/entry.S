@@ -98,6 +98,7 @@ ret_from_exception:
     jmp Restore_all
     
 Err_Code:
+    cli
     // ===== 有错误码的情况下，保存寄存器并跳转服务程序
 
     pushq %rax

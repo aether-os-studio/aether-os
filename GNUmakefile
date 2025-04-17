@@ -117,6 +117,7 @@ $(IMAGE_NAME).iso: limine/limine kernel user
 	cp -v user/acpid/acpid.exec iso_root/usr/bin
 	cp -v user/pcid/pcid.exec iso_root/usr/bin
 	cp -v user/blkd/blkd.exec iso_root/usr/bin
+	cp -v user/ps2d/ps2d.exec iso_root/usr/bin
 	cp -v user/ahcid/ahcid.exec iso_root/usr/bin
 	cp -v user/nvmed/nvmed.exec iso_root/usr/bin
 	cp -v user/fsd/fsd.exec iso_root/usr/bin
@@ -142,6 +143,7 @@ $(IMAGE_NAME).hdd: limine/limine kernel user
 	mcopy -i $(IMAGE_NAME).hdd@@1M user/acpid/acpid.exec ::/usr/bin
 	mcopy -i $(IMAGE_NAME).hdd@@1M user/pcid/pcid.exec ::/usr/bin
 	mcopy -i $(IMAGE_NAME).hdd@@1M user/blkd/blkd.exec ::/usr/bin
+	mcopy -i $(IMAGE_NAME).hdd@@1M user/ps2d/ps2d.exec ::/usr/bin
 	mcopy -i $(IMAGE_NAME).hdd@@1M user/ahcid/ahcid.exec ::/usr/bin
 	mcopy -i $(IMAGE_NAME).hdd@@1M user/nvmed/nvmed.exec ::/usr/bin
 	mcopy -i $(IMAGE_NAME).hdd@@1M user/fsd/fsd.exec ::/usr/bin

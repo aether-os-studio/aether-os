@@ -41,15 +41,16 @@
 // 构造中断entry
 // 为了复用返回函数的代码，需要压入一个错误码0
 
-#define Build_IRQ(number)                                                                          \
-    extern void IRQ_NAME(number);                                                                  \
-    __asm__(".section .text\n\t" SYMBOL_NAME_STR(IRQ) #number "interrupt:\n\t"                     \
-                                                              "pushq $0x00\n\t" SAVE_ALL_REGS      \
-                                                              "movq %rsp, %rdi\n\t"                \
-                                                              "leaq ret_from_intr(%rip), %rax\n\t" \
-                                                              "pushq %rax \n\t"                    \
-                                                              "movq	$" #number ", %rsi\n\t"        \
-                                                              "jmp c_do_irq\n\t");
+#define Build_IRQ(number)                                                      \
+    extern void IRQ_NAME(number);                                              \
+    __asm__(".section .text\n\t" SYMBOL_NAME_STR(IRQ) #number "interrupt:\n\t" \
+                                                              "cli\n\t" \                                                            
+    "pushq $0x00\n\t" SAVE_ALL_REGS                                            \
+    "movq %rsp, %rdi\n\t"                                                      \
+    "leaq ret_from_intr(%rip), %rax\n\t"                                       \
+    "pushq %rax \n\t"                                                          \
+    "movq	$" #number ", %rsi\n\t"                                            \
+    "jmp c_do_irq\n\t");
 
 // 构造中断入口
 Build_IRQ(0x20);
@@ -147,8 +148,6 @@ void c_do_irq(struct pt_regs *regs, uint8_t irq_num)
 
         task_switch_to(regs, current_task, next);
     }
-
-    sti();
 }
 
 int irq_register(uint8_t irq_num, void (*handler)(uint8_t irq_num, uint64_t parameter, struct pt_regs *regs), uint64_t paramater, hardware_intr_controller *controller, char *irq_name)

@@ -2,6 +2,13 @@
 #include <stdarg.h>
 #include <libsyscall.h>
 
+char getchar()
+{
+    char buf[1];
+    read(0, buf, 1);
+    return buf[0];
+}
+
 char buf[4096];
 
 extern int vsprintf(char *buf, const char *fmt, va_list args);

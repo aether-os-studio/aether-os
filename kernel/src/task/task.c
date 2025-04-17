@@ -194,6 +194,8 @@ bool task_initialized = false;
 
 void task_init()
 {
+    kbd_init();
+
     memset(tasks, 0, sizeof(tasks));
     memset(idle_tasks, 0, sizeof(idle_tasks));
 

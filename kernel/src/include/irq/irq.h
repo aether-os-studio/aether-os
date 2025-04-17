@@ -3,6 +3,7 @@
 #include <klibc.h>
 
 #define APIC_TIMER_INTERRUPT_VECTOR 0x20
+#define PS2_KBD_INTERRUPT_VECTOR 0x21
 
 typedef struct hardware_intr_type
 {

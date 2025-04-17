@@ -8,6 +8,7 @@
 #include <mm/hhdm.h>
 #include <scheme/scheme.h>
 #include <mm/frame.h>
+#include <task/kbd.h>
 
 uint64_t sys_exit(uint64_t code)
 {
@@ -127,6 +128,26 @@ uint64_t sys_open(const char *name, uint64_t mode, uint64_t flags)
 
 uint64_t sys_read(uint64_t fd, uint64_t buf, uint64_t len)
 {
+    if (fd == 0 && len <= 128)
+    {
+        uint64_t write_len = 0;
+        while (write_len < len)
+        {
+            uint8_t scancode = get_keyboard_input();
+            if (scancode != 0)
+            {
+                ((uint8_t *)buf)[write_len] = scancode;
+                write_len++;
+            }
+            else
+            {
+                __asm__ __volatile__("int %0" ::"i"(APIC_TIMER_INTERRUPT_VECTOR));
+            }
+        }
+
+        return len;
+    }
+
     scheme_t *scheme = current_task->schemes[fd];
     if (scheme == NULL)
     {

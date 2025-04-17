@@ -8,6 +8,7 @@ all:
 	$(MAKE) -C acpid
 	$(MAKE) -C pcid
 	$(MAKE) -C blkd
+	$(MAKE) -C ps2d
 	$(MAKE) -C ahcid
 	$(MAKE) -C nvmed
 	$(MAKE) -C fsd
