@@ -52,7 +52,9 @@ uint64_t sys_physmap(uint64_t addr, uint64_t size, uint64_t flags)
 
 uint64_t sys_brk(uint64_t addr)
 {
-    unsigned long new_brk = (addr + PAGE_SIZE - 1) & (~(PAGE_SIZE - 1));
+    page_directory_t *current_page_dir = get_current_page_dir();
+
+    uint64_t new_brk = (addr + PAGE_SIZE - 1) & (~(PAGE_SIZE - 1));
 
     if (new_brk == 0)
         return current_task->brk_start;
@@ -62,13 +64,27 @@ uint64_t sys_brk(uint64_t addr)
     uint64_t start = current_task->brk_end;
     uint64_t size = new_brk - current_task->brk_end;
 
-    page_map_range_to(get_current_page_dir(), start, 0, PAGE_SIZE * 8, USER_PTE_FLAGS);
+    page_map_range_to(current_page_dir, start, 0, PAGE_SIZE * 8, USER_PTE_FLAGS);
 
     new_brk = start + size;
 
     current_task->brk_end = new_brk;
 
     return new_brk;
+}
+
+uint64_t sys_sbrk(uint64_t size)
+{
+    uint64_t retval = current_task->brk_end;
+
+    if (size == 0)
+        return retval;
+
+    page_map_range_to(get_current_page_dir(), retval, 0, size, USER_PTE_FLAGS);
+
+    current_task->brk_end = retval + size;
+
+    return retval;
 }
 
 extern volatile struct limine_framebuffer_request framebuffer_request;
@@ -259,6 +275,9 @@ void syscall_handler(struct pt_regs *regs, struct pt_regs *user_regs)
 
     case SYS_BRK:
         regs->rax = sys_brk(arg1);
+        break;
+    case SYS_SBRK:
+        regs->rax = sys_sbrk(arg1);
         break;
     case SYS_PHYSMAP:
         regs->rax = sys_physmap(arg1, arg2, arg3);

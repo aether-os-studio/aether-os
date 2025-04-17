@@ -35,7 +35,7 @@ void irq_init()
 
 void dump_regs(struct pt_regs *regs)
 {
-    // printk("CPU ID = %d\n", current_cpu_id);
+    printk("TASK: %s, CPU ID = %d\n", current_task->name, current_cpu_id);
 
     printk("RAX = %#018lx, RBX = %#018lx\n", regs->rax, regs->rbx);
     printk("RCX = %#018lx, RDX = %#018lx\n", regs->rcx, regs->rdx);

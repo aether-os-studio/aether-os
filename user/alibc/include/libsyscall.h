@@ -32,6 +32,7 @@ enum
     SYS_GET_INFO,
 
     SYS_BRK,
+    SYS_SBRK,
     SYS_PHYSMAP,
     SYS_VIRTTOPHYS,
 
@@ -123,6 +124,7 @@ int ioctl(int fd, int cmd, int arg);
 int getdents(int fd, void *buf, int count);
 
 void *brk(uint64_t addr);
+uint64_t sbrk(uint64_t size);
 
 void iopl(uint64_t level);
 

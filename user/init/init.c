@@ -52,12 +52,24 @@ int main(int argc, char **argv)
     child_pid = fork();
     if (child_pid == 0)
     {
+        load_module("/usr/bin/nvmed.exec", NULL, NULL);
+    }
+    else
+    {
+        waitpid(child_pid, &status);
+    }
+
+    child_pid = fork();
+    if (child_pid == 0)
+    {
         load_module("/usr/bin/fsd.exec", NULL, NULL);
     }
     else
     {
         waitpid(child_pid, &status);
     }
+
+    printf("All init done");
 
     while (1)
     {

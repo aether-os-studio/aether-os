@@ -15,7 +15,9 @@ uint64_t start_daemon(uint64_t (*func)(daemon_t *))
     {
         uint64_t ret = func(&daemon);
 
-        return 0;
+        finish_daemon(&daemon);
+
+        return ret;
     }
     else
     {

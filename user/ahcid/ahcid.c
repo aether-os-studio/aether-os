@@ -397,6 +397,8 @@ uint64_t ahcid_daemon(daemon_t *daemon)
 
     printf("ahci driver init done\n");
 
+    close(fd);
+
     init_scheme(&ahcid_scheme);
 
     scheme_create("/scheme/ahcid", &ahcid_scheme);

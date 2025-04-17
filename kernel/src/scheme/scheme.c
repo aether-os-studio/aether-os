@@ -4,6 +4,7 @@
 #include <irq/irq.h>
 #include <task/task.h>
 #include <kprint.h>
+#include <syscall/syscall.h>
 
 scheme_t taskid_to_user_schemes[MAX_TASK_NUM];
 
@@ -78,9 +79,10 @@ uint64_t scheme_transfer(scheme_t *scheme, uint64_t cmd, uint64_t buffer, uint64
             return (uint64_t)-EINVAL;
         }
 
-        page_map_range_to(scheme->task->pgdir, buffer_phys, buffer_phys, len + PAGE_SIZE, USER_PTE_FLAGS);
+        uint64_t buffer_virt = USER_SPACE_BUFFER_MAPPING_OFFSET + buffer_phys;
+        page_map_range_to(scheme->task->pgdir, buffer_virt, buffer_phys, len + PAGE_SIZE, USER_PTE_FLAGS);
 
-        command->a = buffer_phys;
+        command->a = buffer_virt;
     }
     else
     {
@@ -89,6 +91,7 @@ uint64_t scheme_transfer(scheme_t *scheme, uint64_t cmd, uint64_t buffer, uint64
     command->b = len;
     command->c = scheme->offset;
 
+    memset(phys_to_virt((char *)scheme->command_d), 0, SCHEME_NAME_MAX);
     strncpy(phys_to_virt((char *)scheme->command_d), scheme->target_name, SCHEME_NAME_MAX);
 
     command->cmd = cmd;
@@ -100,6 +103,8 @@ uint64_t scheme_transfer(scheme_t *scheme, uint64_t cmd, uint64_t buffer, uint64
         // Wait for the command to be processed
         sys_yield();
     }
+
+    cli();
 
     return command->a;
 }

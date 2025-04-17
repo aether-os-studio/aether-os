@@ -84,6 +84,11 @@ void *brk(uint64_t addr)
     return (void *)enter_syscall(SYS_BRK, addr, 0, 0, 0, 0, 0);
 }
 
+uint64_t sbrk(uint64_t size)
+{
+    return enter_syscall(SYS_SBRK, size, 0, 0, 0, 0, 0);
+}
+
 int fork()
 {
     return (int)enter_syscall(SYS_FORK, 0, 0, 0, 0, 0, 0);

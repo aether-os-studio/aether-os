@@ -203,12 +203,16 @@ uint64_t blkd_ioctl(uint64_t cmd, uint64_t arg, uint64_t offset, char *target_na
         newdev->block_size = arg;
 
         blk_devnum++;
+
+        return 0;
     }
     break;
 
     default:
         break;
     }
+
+    return (uint64_t)-1;
 }
 
 uint64_t blkd_daemon(daemon_t *daemon)

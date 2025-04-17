@@ -26,6 +26,7 @@ enum
     SYS_GET_INFO,
 
     SYS_BRK,
+    SYS_SBRK,
     SYS_PHYSMAP,
     SYS_VIRTTOPHYS,
 
@@ -58,6 +59,8 @@ typedef struct bootstrap_info
 #define PROT_EXEC (1UL << 2)
 
 #define USER_MAPPING_SPACE 0x0
+
+#define USER_SPACE_BUFFER_MAPPING_OFFSET 0x600000000000
 
 extern void syscall_exception();
 

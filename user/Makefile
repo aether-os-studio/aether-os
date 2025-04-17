@@ -9,6 +9,7 @@ all:
 	$(MAKE) -C pcid
 	$(MAKE) -C blkd
 	$(MAKE) -C ahcid
+	$(MAKE) -C nvmed
 	$(MAKE) -C fsd
 
 clean:

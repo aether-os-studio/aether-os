@@ -24,6 +24,9 @@ void task_to_user_mode(uint64_t addr, uint64_t load_start, uint64_t load_end, ch
     iframe->rflags = (0 << 12) | (0b10) | (1 << 9);
     iframe->rip = addr;
 
+    iframe->rbp = USER_STACK_TOP;
+    iframe->rsp = USER_STACK_TOP;
+
     iframe->rdi = 0;
     if (argv != NULL)
     {
@@ -59,12 +62,11 @@ void task_to_user_mode(uint64_t addr, uint64_t load_start, uint64_t load_end, ch
     current_task->thread->elf_mapping_start = load_start;
     current_task->thread->elf_mapping_end = load_end;
 
+    current_task->pgdir = clone_directory(get_current_page_dir());
+
     __asm__ __volatile__("movq %0, %%cr3\n\t" ::"r"(current_task->pgdir->table));
 
     page_map_range_to(get_current_page_dir(), USER_STACK_TOP - USER_STACK_SIZE, 0, USER_STACK_SIZE, USER_PTE_FLAGS);
-
-    iframe->rbp = USER_STACK_TOP;
-    iframe->rsp = USER_STACK_TOP;
 
     write_kgsbase((uint64_t)current_task);
 

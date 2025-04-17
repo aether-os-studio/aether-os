@@ -34,27 +34,7 @@ all: $(IMAGE_NAME).iso
 all-hdd: $(IMAGE_NAME).hdd
 
 .PHONY: run
-run: $(IMAGE_NAME).iso
-ifeq ($(SUDO), 1)
-	sudo qemu-system-x86_64 \
-		-M q35 \
-		-drive if=none,file=$(IMAGE_NAME).iso,format=raw,id=cdrom \
-		-boot d \
-		-device ahci,id=ahci \
-		-device ide-cd,drive=cdrom,bus=ahci.0 \
-		$(QEMUFLAGS)
-else
-	qemu-system-x86_64 \
-		-M q35 \
-		-drive if=none,file=$(IMAGE_NAME).iso,format=raw,id=cdrom \
-		-boot d \
-		-device ahci,id=ahci \
-		-device ide-cd,drive=cdrom,bus=ahci.0 \
-		$(QEMUFLAGS)
-endif
-
-.PHONY: run-uefi
-run-uefi: ovmf/ovmf-code-x86_64.fd $(IMAGE_NAME).iso
+run: ovmf/ovmf-code-x86_64.fd $(IMAGE_NAME).iso
 ifeq ($(SUDO), 1)
 	sudo qemu-system-x86_64 \
 		-M q35 \
@@ -76,29 +56,7 @@ else
 endif
 
 .PHONY: run-hdd
-run-hdd: $(IMAGE_NAME).hdd
-ifeq ($(SUDO), 1)
-	sudo qemu-system-x86_64 \
-		-M q35 \
-		-drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-code-x86_64.fd,readonly=on \
-		-drive if=none,file=$(IMAGE_NAME).hdd,format=raw,id=harddisk \
-		-boot d \
-		-device ahci,id=ahci \
-		-device ide-hd,drive=harddisk,bus=ahci.0 \
-		$(QEMUFLAGS)
-else
-	qemu-system-x86_64 \
-		-M q35 \
-		-drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-code-x86_64.fd,readonly=on \
-		-drive if=none,file=$(IMAGE_NAME).hdd,format=raw,id=harddisk \
-		-boot d \
-		-device ahci,id=ahci \
-		-device ide-hd,drive=harddisk,bus=ahci.0 \
-		$(QEMUFLAGS)
-endif
-
-.PHONY: run-hdd-uefi
-run-hdd-uefi: ovmf/ovmf-code-x86_64.fd $(IMAGE_NAME).hdd
+run-hdd: ovmf/ovmf-code-x86_64.fd $(IMAGE_NAME).hdd
 ifeq ($(SUDO), 1)
 	sudo qemu-system-x86_64 \
 		-M q35 \
@@ -160,6 +118,7 @@ $(IMAGE_NAME).iso: limine/limine kernel user
 	cp -v user/pcid/pcid.exec iso_root/usr/bin
 	cp -v user/blkd/blkd.exec iso_root/usr/bin
 	cp -v user/ahcid/ahcid.exec iso_root/usr/bin
+	cp -v user/nvmed/nvmed.exec iso_root/usr/bin
 	cp -v user/fsd/fsd.exec iso_root/usr/bin
 	xorriso -as mkisofs -R -r -J -b boot/limine/limine-bios-cd.bin \
 		-no-emul-boot -boot-load-size 4 -boot-info-table -hfsplus \
@@ -170,10 +129,9 @@ $(IMAGE_NAME).iso: limine/limine kernel user
 	rm -rf iso_root
 
 $(IMAGE_NAME).hdd: limine/limine kernel user
-	rm -f $(IMAGE_NAME).hdd
-	dd if=/dev/zero bs=1M count=0 seek=64 of=$(IMAGE_NAME).hdd
-	PATH=$$PATH:/usr/sbin:/sbin sgdisk $(IMAGE_NAME).hdd -n 1:2048 -t 1:ef00 -m 1
-	./limine/limine bios-install $(IMAGE_NAME).hdd
+	rm -rf $(IMAGE_NAME).hdd
+	dd if=/dev/zero of=$(IMAGE_NAME).hdd bs=1M count=64
+	sgdisk $(IMAGE_NAME).hdd -n 1:2048 -t 1:ef00
 	mformat -i $(IMAGE_NAME).hdd@@1M
 	mmd -i $(IMAGE_NAME).hdd@@1M ::/EFI ::/EFI/BOOT ::/boot ::/boot/limine ::/usr ::/usr/bin
 	mcopy -i $(IMAGE_NAME).hdd@@1M kernel/bin/kernel ::/boot
@@ -185,7 +143,10 @@ $(IMAGE_NAME).hdd: limine/limine kernel user
 	mcopy -i $(IMAGE_NAME).hdd@@1M user/pcid/pcid.exec ::/usr/bin
 	mcopy -i $(IMAGE_NAME).hdd@@1M user/blkd/blkd.exec ::/usr/bin
 	mcopy -i $(IMAGE_NAME).hdd@@1M user/ahcid/ahcid.exec ::/usr/bin
+	mcopy -i $(IMAGE_NAME).hdd@@1M user/nvmed/nvmed.exec ::/usr/bin
 	mcopy -i $(IMAGE_NAME).hdd@@1M user/fsd/fsd.exec ::/usr/bin
+
+	qemu-img convert -O vmdk $(IMAGE_NAME).hdd $(IMAGE_NAME).vmdk
 
 .PHONY: clean
 clean:

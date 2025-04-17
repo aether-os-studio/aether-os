@@ -246,8 +246,10 @@ void task_switch_to(struct pt_regs *curr, task_t *prev, task_t *next)
 
     if (can_schedule)
     {
+        __asm__ __volatile__("movq %0, %%cr3\n\t" ::"r"(next->pgdir->table));
+
         // Start to switch
-        tss[current_cpu_id].rsp0 = (uint64_t)(next->context + 1);
+        tss[current_cpu_id].rsp0 = (uint64_t)next->context;
         uint16_t value = next->userspace_io_allowed ? offsetof(tss_t, iomap) : 0xFFFF;
         tss[current_cpu_id].iomapbaseaddr = value;
 
@@ -260,8 +262,6 @@ void task_switch_to(struct pt_regs *curr, task_t *prev, task_t *next)
         next->state = TASK_RUNNING;
 
         __asm__ __volatile__("fxrstor (%0)" ::"r"(next->fpu));
-
-        __asm__ __volatile__("movq %0, %%cr3\n\t" ::"r"(next->pgdir->table));
 
         write_kgsbase((uint64_t)next);
 
