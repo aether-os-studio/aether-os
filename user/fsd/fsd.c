@@ -11,7 +11,7 @@ extern void fatfs_init();
 void mount_root()
 {
     printf("Mounting root\n");
-    bool err = false;
+    bool err = true;
     for (uint64_t i = 0; i < partition_num; i++)
     {
         char buf[11];
