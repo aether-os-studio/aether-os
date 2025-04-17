@@ -78,7 +78,7 @@ uint64_t pcid_daemon(daemon_t *daemon)
     MCFG *buf = (MCFG *)malloc(len);
     if (!buf)
     {
-        printf("malloc failed\n");
+        printf("malloc MCFG buffer failed\n");
         close(fd);
         pcie = false;
     }
@@ -87,7 +87,7 @@ uint64_t pcid_daemon(daemon_t *daemon)
     int ret = read(fd, buf, len);
     if (ret != len)
     {
-        printf("read failed\n");
+        printf("read MCFG failed\n");
         free(buf);
         close(fd);
         pcie = false;
@@ -97,8 +97,6 @@ uint64_t pcid_daemon(daemon_t *daemon)
     {
         close(fd);
     }
-
-    iopl(3);
 
     init_pci(buf, pcie);
 

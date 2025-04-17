@@ -13,7 +13,7 @@ void mcfg_addr_to_entries(MCFG *mcfg, MCFG_ENTRY **entries, uint64_t *num)
     *num = length / sizeof(MCFG_ENTRY);
     for (int i = 0; i < *num; i++)
     {
-        *(entries + i) = entry + i;
+        entries[i] = entry + i;
     }
 }
 
@@ -48,7 +48,7 @@ uint64_t get_mmio_address(uint32_t pci_address, uint16_t offset)
 
 uint32_t segment_bus_device_functon_to_pci_address(uint16_t segment, uint8_t bus, uint8_t device, uint8_t function)
 {
-    return ((uint32_t)segment << 16) | ((uint32_t)bus << 8) | ((uint32_t)device << 3) | (uint32_t)function;
+    return ((uint32_t)(segment & 0xFFFF) << 16) | ((uint32_t)(bus & 0xFF) << 8) | ((uint32_t)(device & 0x3F) << 3) | (uint32_t)(function & 0xF);
 }
 
 uint32_t pci_read(uint32_t b, uint32_t d, uint32_t f, uint32_t s, uint32_t offset)
@@ -338,7 +338,7 @@ void pci_scan_function(uint16_t segment_group, uint8_t bus, uint8_t device, uint
     uint8_t device_interface = *((uint8_t *)field_mmio_addr + 1);
 
     uint64_t header_type_mmio_addr = get_mmio_address(pci_address, 0x0c);
-    uint8_t header_type = *((uint8_t *)header_type_mmio_addr + 2);
+    uint8_t header_type = (*((uint8_t *)header_type_mmio_addr + 2)) & 0x7F;
 
     pci_device_t *pci_device = (pci_device_t *)malloc(sizeof(pci_device_t));
     memset(pci_device, 0, sizeof(pci_device_t));
@@ -447,6 +447,8 @@ void pci_scan_function(uint16_t segment_group, uint8_t bus, uint8_t device, uint
         {
             pci_scan_bus(segment_group, bus);
         }
+
+        free(pci_device);
         break;
     }
         // CardBusBridge
@@ -454,7 +456,7 @@ void pci_scan_function(uint16_t segment_group, uint8_t bus, uint8_t device, uint
         // Ignore
         break;
     default:
-        return;
+        printf("Failed to parse header type, header type = %#04x\n", header_type);
     }
 }
 
@@ -612,6 +614,9 @@ void init_pci(MCFG *mcfg_buffer, bool pcie)
     else
     {
         printf("Scanning PCI bus\n");
+
+        iopl(3);
+
         // Scan PCI bus
         uint32_t BUS, Equipment, F;
         for (BUS = 0; BUS < 256; BUS++)
