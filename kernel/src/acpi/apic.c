@@ -50,7 +50,7 @@ void ioapic_add(uint8_t vector, uint32_t irq)
     ioapic_write(ioredtbl + 1, (uint32_t)(redirect >> 32));
 }
 
-static void lapic_write(uint32_t reg, uint32_t value)
+void lapic_write(uint32_t reg, uint32_t value)
 {
     if (x2apic_mode)
     {
@@ -75,28 +75,19 @@ uint64_t lapic_id()
     return x2apic_mode ? phy_id : (phy_id >> 24);
 }
 
-static inline void get_cpuid(uint32_t Mop, uint32_t Sop, uint32_t *a, uint32_t *b, uint32_t *c, uint32_t *d)
-{
-    __asm__ __volatile__("cpuid	\n\t"
-                         : "=a"(*a), "=b"(*b), "=c"(*c), "=d"(*d)
-                         : "0"(Mop), "2"(Sop));
-}
-
 uint64_t calibrated_timer_initial;
 
 void local_apic_init(bool is_print)
 {
-    uint32_t eax, ebx, ecx, edx;
-    get_cpuid(1, 0, &eax, &ebx, &ecx, &edx);
+    x2apic_mode = ((mp_request.flags & LIMINE_MP_X2APIC) != 0);
 
-    if (ecx & (1 << 21))
-        x2apic_mode = true;
-    else
-        x2apic_mode = false;
-
-    wrmsr(0x1b, rdmsr(0x1b) | (1 << 11));
+    uint64_t value = rdmsr(0x1b);
+    value |= (1UL << 11);
     if (x2apic_mode)
-        wrmsr(0x1b, rdmsr(0x1b) | (1 << 10));
+        value |= (1UL << 10);
+    wrmsr(0x1b, value);
+
+    lapic_timer_stop();
 
     lapic_write(LAPIC_REG_TIMER, APIC_TIMER_INTERRUPT_VECTOR);
     lapic_write(LAPIC_REG_SPURIOUS, 0xff | 1 << 8);
@@ -123,9 +114,11 @@ void local_apic_init(bool is_print)
 
 void local_apic_ap_init()
 {
-    wrmsr(0x1b, rdmsr(0x1b) | (1 << 11));
+    uint64_t value = rdmsr(0x1b);
+    value |= (1 << 11);
     if (x2apic_mode)
-        wrmsr(0x1b, rdmsr(0x1b) | (1 << 10));
+        value |= (1 << 10);
+    wrmsr(0x1b, value);
 
     lapic_write(LAPIC_REG_TIMER, APIC_TIMER_INTERRUPT_VECTOR);
     lapic_write(LAPIC_REG_SPURIOUS, 0xff | 1 << 8);

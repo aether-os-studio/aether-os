@@ -58,14 +58,16 @@ void acpi_init()
     rsdp = phys_to_virt(rsdp);
     page_map_range_to(get_kernel_page_dir(), (uint64_t)rsdp, rsdp_paddr, PAGE_SIZE, KERNEL_PTE_FLAGS);
 
-    xsdt = (XSDT *)rsdp->xsdt_address;
+    uint64_t xsdt_paddr = rsdp->xsdt_address;
+
+    xsdt = (XSDT *)xsdt_paddr;
     if (xsdt == NULL)
     {
         kwarn("Cannot find acpi XSDT table.");
         return;
     }
     xsdt = phys_to_virt(xsdt);
-    page_map_range_to(get_kernel_page_dir(), (uint64_t)xsdt, rsdp->xsdt_address, PAGE_SIZE, KERNEL_PTE_FLAGS);
+    page_map_range_to(get_kernel_page_dir(), (uint64_t)xsdt, xsdt_paddr, PAGE_SIZE, KERNEL_PTE_FLAGS);
 
     load_table(HPET, hpet_setup);
     load_table(APIC, apic_setup);

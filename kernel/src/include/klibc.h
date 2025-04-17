@@ -377,7 +377,7 @@ static inline uint64_t rdmsr(uint64_t address)
 
 static inline void wrmsr(uint64_t address, uint64_t value)
 {
-    __asm__ __volatile__("wrmsr	\n\t" ::"d"(value >> 32), "a"(value & 0xffffffff), "c"(address) : "memory");
+    __asm__ __volatile__("wrmsr	\n\t" ::"d"((uint32_t)(value >> 32)), "a"((uint32_t)(value & 0xffffffff)), "c"(address) : "memory");
 }
 
 static inline uint64_t get_rsp()

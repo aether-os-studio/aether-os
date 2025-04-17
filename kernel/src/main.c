@@ -50,6 +50,8 @@ void kmain(void)
         hcf();
     }
 
+    can_schedule = false;
+
     sse_init();
 
     printk_init(8, 16);
@@ -59,8 +61,8 @@ void kmain(void)
     page_init();
     heap_init();
 
-    acpi_init();
     irq_init();
+    acpi_init();
 
     smp_init();
 

@@ -6,7 +6,7 @@
 #include <mm/page.h>
 #include <task/signal.h>
 
-#define STACK_SIZE 8192UL
+#define STACK_SIZE 32768UL
 
 #define USER_STACK_TOP 0x6ffffa000000
 #define USER_STACK_SIZE (1 * 1024 * 1024)

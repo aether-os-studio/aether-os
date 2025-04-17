@@ -44,8 +44,6 @@ scheme_t *scheme_open(const char *name)
         {
             uint64_t idx = strlen(taskid_to_user_schemes[i].name) + 1;
             scheme_t *scheme = &taskid_to_user_schemes[i];
-            if (scheme->target_name[0] != '\0')
-                kwarn("Not closed scheme %s/%s\n", scheme->name, scheme->target_name);
             strncpy(scheme->target_name, name + idx, SCHEME_NAME_MAX);
             return scheme;
         }

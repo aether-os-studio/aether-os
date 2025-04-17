@@ -35,7 +35,7 @@ void irq_init()
 
 void dump_regs(struct pt_regs *regs)
 {
-    printk("CPU ID = %d\n", current_cpu_id);
+    // printk("CPU ID = %d\n", current_cpu_id);
 
     printk("RAX = %#018lx, RBX = %#018lx\n", regs->rax, regs->rbx);
     printk("RCX = %#018lx, RDX = %#018lx\n", regs->rcx, regs->rdx);
@@ -276,8 +276,6 @@ void do_page_fault(struct pt_regs *regs, uint64_t error_code)
 
     if (error_code & 0x10)
         printk("Fault occurred during fetching instruction.\n");
-
-    printk("task: %s", current_task->name);
 
     dump_regs(regs);
 
