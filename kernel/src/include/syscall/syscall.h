@@ -21,6 +21,7 @@ enum
     SYS_FORK,
     SYS_WAITPID,
     SYS_LOAD_MODULE,
+    SYS_EXECVE,
     SYS_IOPL,
 
     SYS_GET_INFO,
@@ -34,6 +35,8 @@ enum
 
     SYS_DMA_ALLOC,
     SYS_DMA_FREE,
+
+    SYS_REGIST_FSD,
 
     SYS_NUM,
 };

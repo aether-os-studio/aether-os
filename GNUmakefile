@@ -121,6 +121,7 @@ $(IMAGE_NAME).iso: limine/limine kernel user
 	cp -v user/ahcid/ahcid.exec iso_root/usr/bin
 	cp -v user/nvmed/nvmed.exec iso_root/usr/bin
 	cp -v user/fsd/fsd.exec iso_root/usr/bin
+	cp -v user/shell/shell.exec iso_root/usr/bin
 	xorriso -as mkisofs -R -r -J -b boot/limine/limine-bios-cd.bin \
 		-no-emul-boot -boot-load-size 4 -boot-info-table -hfsplus \
 		-apm-block-size 2048 --efi-boot boot/limine/limine-uefi-cd.bin \
@@ -147,6 +148,7 @@ $(IMAGE_NAME).hdd: limine/limine kernel user
 	mcopy -i $(IMAGE_NAME).hdd@@1M user/ahcid/ahcid.exec ::/usr/bin
 	mcopy -i $(IMAGE_NAME).hdd@@1M user/nvmed/nvmed.exec ::/usr/bin
 	mcopy -i $(IMAGE_NAME).hdd@@1M user/fsd/fsd.exec ::/usr/bin
+	mcopy -i $(IMAGE_NAME).hdd@@1M user/shell/shell.exec ::/usr/bin
 
 	qemu-img convert -O vmdk $(IMAGE_NAME).hdd $(IMAGE_NAME).vmdk
 

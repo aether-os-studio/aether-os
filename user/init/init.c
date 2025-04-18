@@ -79,6 +79,12 @@ int main(int argc, char **argv)
         waitpid(child_pid, &status);
     }
 
+    int ret = execve("/usr/bin/shell.exec", NULL, NULL);
+    if (ret < 0)
+    {
+        printf("execve shell failed\n");
+    }
+
     while (1)
     {
         __asm__ __volatile__("pause");

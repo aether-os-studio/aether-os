@@ -75,6 +75,9 @@ typedef struct task_thread
 struct scheme;
 typedef struct scheme scheme_t;
 
+struct fsd;
+typedef struct fsd fsd_t;
+
 typedef struct task
 {
     uint64_t self_ref;
@@ -94,6 +97,7 @@ typedef struct task
     task_thread_t *thread;
     task_state_t state;
     fpu_context *fpu;
+    fsd_t *fsds[MAX_FD_NUM];
     scheme_t *schemes[MAX_FD_NUM];
     int status;
     sigaction_t actions[MAXSIG];

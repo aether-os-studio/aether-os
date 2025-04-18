@@ -27,6 +27,7 @@ enum
     SYS_FORK,
     SYS_WAITPID,
     SYS_LOAD_MODULE,
+    SYS_EXECVE,
     SYS_IOPL,
 
     SYS_GET_INFO,
@@ -40,6 +41,8 @@ enum
 
     SYS_DMA_ALLOC,
     SYS_DMA_FREE,
+
+    SYS_REGIST_FSD,
 
     SYS_NUM,
 };
@@ -135,6 +138,7 @@ int waitpid(int pid, int *status);
 uint64_t virttophys(uint64_t virt);
 
 void load_module(const char *name, char *argv[], char *envp[]);
+int execve(const char *name, char *argv[], char *envp[]);
 
 void get_bootstrap_info(bootstrap_info_t *info);
 
@@ -186,3 +190,20 @@ void scheme_create(const char *name, user_scheme_t *addr);
 
 uint64_t alloc_dma(uint64_t count);
 void free_dma(uint64_t addr, uint64_t count);
+
+enum
+{
+    FSD_IOCTL_GETSIZE,
+};
+
+enum
+{
+    FSD_OPEN = 1,
+    FSD_READ,
+    FSD_WRITE,
+    FSD_IOCTL,
+    FSD_LSEEK,
+    FSD_CLOSE,
+};
+
+void regist_fsd(uint64_t addr);

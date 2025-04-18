@@ -204,6 +204,10 @@ uint64_t translate_addr(page_directory_t *directory, uint64_t vaddr)
     }
     uint64_t *pd = (uint64_t *)phys_to_virt(pdpt[pdpt_id] & ~(0xFFFUL));
     uint64_t pd_id = (vaddr >> 21) & 0x1FFUL;
+    if (pd[pd_id] & PTE_HUGE)
+    {
+        return (pd[pd_id] & ~((1UL << 21) - 1)) + (vaddr & ((1UL << 21) - 1));
+    }
     if ((pd[pd_id] & (1 << 0)) == 0)
     {
         return 0;

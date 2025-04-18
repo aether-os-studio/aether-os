@@ -13,5 +13,7 @@ all:
 	$(MAKE) -C nvmed
 	$(MAKE) -C fsd
 
+	$(MAKE) -C shell
+
 clean:
 	rm -rf $(shell find . -name "*.o") $(shell find . -name "*.exec") obj/

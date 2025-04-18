@@ -109,6 +109,11 @@ void load_module(const char *name, char *argv[], char *envp[])
     enter_syscall(SYS_LOAD_MODULE, (uint64_t)name, (uint64_t)argv, (uint64_t)envp, 0, 0, 0);
 }
 
+int execve(const char *name, char *argv[], char *envp[])
+{
+    return enter_syscall(SYS_EXECVE, (uint64_t)name, (uint64_t)argv, (uint64_t)envp, 0, 0, 0);
+}
+
 void get_bootstrap_info(bootstrap_info_t *info)
 {
     enter_syscall(SYS_GET_INFO, (uint64_t)info, 0, 0, 0, 0, 0);
@@ -137,4 +142,9 @@ uint64_t alloc_dma(uint64_t count)
 void free_dma(uint64_t addr, uint64_t count)
 {
     enter_syscall(SYS_DMA_FREE, addr, count, 0, 0, 0, 0);
+}
+
+void regist_fsd(uint64_t addr)
+{
+    enter_syscall(SYS_REGIST_FSD, addr, 0, 0, 0, 0, 0);
 }

@@ -166,7 +166,6 @@ uint32_t NVMETransfer(NVME_NAMESPACE *ns, void *buf, uint64_t lba, uint32_t coun
 
 void failed_nvme(NVME_CONTROLLER *ctrl)
 {
-
     if (ctrl->ICQ.CQE)
     {
         free_dma(virttophys((uint64_t)ctrl->ICQ.CQE), 1);

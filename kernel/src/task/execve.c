@@ -1,9 +1,12 @@
 #include <kprint.h>
 #include <task/execve.h>
+#include <mm/hhdm.h>
 #include <mm/frame.h>
 #include <mm/page.h>
+#include <mm/heap.h>
 #include <task/task.h>
 #include <irq/gate.h>
+#include <fs/fs.h>
 
 void task_to_user_mode(uint64_t addr, uint64_t load_start, uint64_t load_end, char **argv, char **envp)
 {
@@ -82,6 +85,110 @@ void load_module(struct limine_file *module, char **argv, char **envp)
 
     if (e_entry == 0)
     {
+        kerror("bad e_entry");
+        return;
+    }
+
+    // 验证ELF魔数
+    if (memcmp((void *)ehdr->e_ident, "\x7F"
+                                      "ELF",
+               4) != 0)
+    {
+        kerror("Invalid ELF magic\n");
+        return;
+    }
+
+    // 检查架构和类型
+    if (ehdr->e_ident[4] != 2 ||   // 64-bit
+        ehdr->e_machine != 0x3E || // x86_64
+        (ehdr->e_type != 2))
+    {
+        kerror("Unsupported ELF format\n");
+        return;
+    }
+
+    uint64_t load_start = UINT64_MAX;
+    uint64_t load_end = 0;
+
+    // 处理程序头
+    const Elf64_Phdr *phdr = (const Elf64_Phdr *)((char *)ehdr + ehdr->e_phoff);
+    for (int i = 0; i < ehdr->e_phnum; ++i)
+    {
+        if (phdr[i].p_type != PT_LOAD)
+            continue;
+
+        uint64_t seg_addr = phdr[i].p_vaddr;
+        uint64_t seg_size = phdr[i].p_memsz;
+        uint64_t file_size = phdr[i].p_filesz;
+        uint64_t page_size = PAGE_SIZE;
+        uint64_t page_mask = page_size - 1;
+
+        // 计算对齐后的地址和大小
+        uint64_t aligned_addr = seg_addr & ~page_mask;
+        uint64_t size_diff = seg_addr - aligned_addr;
+        uint64_t alloc_size = (seg_size + size_diff + page_mask) & ~page_mask;
+
+        if (aligned_addr < load_start)
+            load_start = aligned_addr;
+        else if (aligned_addr + alloc_size > load_end)
+            load_end = aligned_addr + alloc_size;
+
+        page_directory_t *pgdir = get_current_page_dir();
+        page_map_range_to(pgdir, aligned_addr, 0, alloc_size, USER_EXEC_PTE_FLAGS);
+
+        // 复制数据
+        memcpy((char *)aligned_addr + size_diff,
+               (char *)ehdr + phdr[i].p_offset,
+               file_size);
+
+        // 清零剩余内存
+        if (seg_size > file_size)
+        {
+            memset((char *)aligned_addr + size_diff + file_size,
+                   0, seg_size - file_size);
+        }
+    }
+
+    char buf[128];
+    task_to_user_mode(e_entry, load_start, load_end, argv, envp);
+}
+
+uint64_t sys_execve(const char *name, char **argv, char **envp)
+{
+    uint64_t fd = fsd_open(name, 0, 0);
+    if ((int64_t)fd < 0)
+    {
+        kerror("Cannot open file");
+        return fd;
+    }
+
+    uint64_t file_size = fsd_ioctl(fd, FSD_IOCTL_GETSIZE, 0);
+    if ((int64_t)file_size < 0)
+    {
+        kerror("Cannot get file size");
+        return file_size;
+    }
+
+    uint8_t *buffer = (uint8_t *)phys_to_virt(alloc_frames((file_size + PAGE_SIZE - 1) / PAGE_SIZE));
+
+    fsd_lseek(fd, 0);
+
+    uint64_t ret = fsd_read(fd, buffer, file_size);
+    if ((int64_t)ret < 0)
+    {
+        kerror("Failed to read file %s", name);
+        return (uint64_t)-EINVAL;
+    }
+
+    fsd_close(fd);
+
+    const Elf64_Ehdr *ehdr = (const Elf64_Ehdr *)buffer;
+
+    uint64_t e_entry = ehdr->e_entry;
+
+    if (e_entry == 0)
+    {
+        kerror("bad e_entry");
         return;
     }
 

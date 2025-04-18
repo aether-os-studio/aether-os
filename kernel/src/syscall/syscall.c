@@ -9,6 +9,7 @@
 #include <scheme/scheme.h>
 #include <mm/frame.h>
 #include <task/kbd.h>
+#include <fs/fs.h>
 
 uint64_t sys_exit(uint64_t code)
 {
@@ -111,103 +112,151 @@ void sys_get_info(bootstrap_info_t *info)
 uint64_t sys_open(const char *name, uint64_t mode, uint64_t flags)
 {
     uint64_t i;
-    for (i = 3; i < MAX_FD_NUM; i++)
+
+    if (!memcmp(name, "/scheme/", 8))
     {
-        if (current_task->schemes[i] == NULL)
-            break;
+        for (i = 3; i < MAX_FD_NUM; i++)
+        {
+            if (current_task->schemes[i] == NULL)
+                break;
+        }
+
+        if (i >= MAX_FD_NUM)
+        {
+            return (uint64_t)-EFAULT;
+        }
+
+        scheme_t *scheme = scheme_open(name);
+        if (!scheme)
+            return (uint64_t)-ENOENT;
+
+        current_task->schemes[i] = scheme;
+
+        return i;
     }
-
-    scheme_t *scheme = scheme_open(name);
-    if (!scheme)
-        return (uint64_t)-ENOENT;
-
-    current_task->schemes[i] = scheme;
-
-    return i;
+    else
+    {
+        return fsd_open(name, mode, flags);
+    }
 }
 
 uint64_t sys_read(uint64_t fd, uint64_t buf, uint64_t len)
 {
-    if (fd == 0 && len <= 128)
+    if (fd < MAX_FD_NUM)
     {
-        uint64_t write_len = 0;
-        while (write_len < len)
+        if (fd == 0 && len <= 128)
         {
-            uint8_t scancode = get_keyboard_input();
-            if (scancode != 0)
+            uint64_t write_len = 0;
+            while (write_len < len)
             {
-                ((uint8_t *)buf)[write_len] = scancode;
-                write_len++;
+                uint8_t scancode = get_keyboard_input();
+                if (scancode != 0)
+                {
+                    ((uint8_t *)buf)[write_len] = scancode;
+                    write_len++;
+                }
+                else
+                {
+                    __asm__ __volatile__("int %0" ::"i"(APIC_TIMER_INTERRUPT_VECTOR));
+                }
             }
-            else
-            {
-                __asm__ __volatile__("int %0" ::"i"(APIC_TIMER_INTERRUPT_VECTOR));
-            }
+
+            return len;
         }
 
-        return len;
-    }
+        scheme_t *scheme = current_task->schemes[fd];
+        if (scheme == NULL)
+        {
+            return (uint64_t)-EBADF;
+        }
 
-    scheme_t *scheme = current_task->schemes[fd];
-    if (scheme == NULL)
+        return scheme_read(scheme, buf, len);
+    }
+    else
     {
-        return (uint64_t)-EBADF;
+        return fsd_read(fd, buf, len);
     }
-
-    return scheme_read(scheme, buf, len);
 }
 
 uint64_t sys_write(uint64_t fd, uint64_t buf, uint64_t len)
 {
-    if (fd == 1)
+    if (fd < MAX_FD_NUM)
     {
-        printk("%s", (char *)buf);
-    }
-    else if (fd == 2)
-    {
-        printk_color(RED, BLACK, "%s", (char *)buf);
-    }
+        if (fd == 1)
+        {
+            printk("%s", (char *)buf);
+        }
+        else if (fd == 2)
+        {
+            printk_color(RED, BLACK, "%s", (char *)buf);
+        }
 
-    scheme_t *scheme = current_task->schemes[fd];
-    if (scheme == NULL)
-    {
-        return (uint64_t)-EBADF;
-    }
+        scheme_t *scheme = current_task->schemes[fd];
+        if (scheme == NULL)
+        {
+            return (uint64_t)-EBADF;
+        }
 
-    return scheme_write(scheme, buf, len);
+        return scheme_write(scheme, buf, len);
+    }
+    else
+    {
+        return fsd_write(fd, buf, len);
+    }
 }
 
 uint64_t sys_lseek(uint64_t fd, uint64_t offset)
 {
-    scheme_t *scheme = current_task->schemes[fd];
-    if (scheme == NULL)
+    if (fd < MAX_FD_NUM)
     {
-        return (uint64_t)-EBADF;
+        scheme_t *scheme = current_task->schemes[fd];
+        if (scheme == NULL)
+        {
+            return (uint64_t)-EBADF;
+        }
+
+        scheme->offset = offset;
+
+        return offset;
     }
-
-    scheme->offset = offset;
-
-    return offset;
+    else
+    {
+        return fsd_lseek(fd, offset);
+    }
 }
 
 uint64_t sys_ioctl(uint64_t fd, uint64_t cmd, uint64_t arg)
 {
-    scheme_t *scheme = current_task->schemes[fd];
-    if (scheme == NULL)
+    if (fd < MAX_FD_NUM)
     {
-        return (uint64_t)-EBADF;
-    }
+        scheme_t *scheme = current_task->schemes[fd];
+        if (scheme == NULL)
+        {
+            return (uint64_t)-EBADF;
+        }
 
-    return scheme_ioctl(scheme, cmd, arg);
+        return scheme_ioctl(scheme, cmd, arg);
+    }
+    else
+    {
+        return fsd_ioctl(fd, cmd, arg);
+    }
 }
 
 uint64_t sys_close(uint64_t fd)
 {
-    if (!current_task->schemes[fd])
-        return (uint64_t)-EBADF;
+    if (fd < MAX_FD_NUM)
+    {
+        if (!current_task->schemes[fd])
+            return (uint64_t)-EBADF;
 
-    scheme_close(current_task->schemes[fd]);
-    current_task->schemes[fd] = (scheme_t *)NULL;
+        scheme_close(current_task->schemes[fd]);
+        current_task->schemes[fd] = (scheme_t *)NULL;
+    }
+    else
+    {
+        return fsd_close(fd);
+    }
 }
 
 uint64_t sys_getdents(uint64_t fd, uint64_t buf, uint64_t size)
@@ -219,6 +268,7 @@ uint64_t sys_getdents(uint64_t fd, uint64_t buf, uint64_t size)
 }
 
 extern void sys_load_module(const char *, char **, char **);
+extern uint64_t sys_execve(const char *, char **, char **);
 
 void *real_memcpy(void *dst, void *src, long len)
 {
@@ -283,6 +333,9 @@ void syscall_handler(struct pt_regs *regs, struct pt_regs *user_regs)
         sys_load_module((const char *)arg1, (char **)arg2, (char **)arg3);
         regs->rax = 0;
         break;
+    case SYS_EXECVE:
+        regs->rax = sys_execve((const char *)arg1, (char **)arg2, (char **)arg3);
+        break;
 
     case SYS_IOPL:
         sys_iopl(arg1);
@@ -341,6 +394,11 @@ void syscall_handler(struct pt_regs *regs, struct pt_regs *user_regs)
 
     case SYS_DMA_FREE:
         free_frames(arg1, arg2);
+        regs->rax = 0;
+        break;
+
+    case SYS_REGIST_FSD:
+        sys_regist_fs(arg1);
         regs->rax = 0;
         break;
 
