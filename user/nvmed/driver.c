@@ -54,9 +54,7 @@ int NVMEConfigureCQ(NVME_CONTROLLER *ctrl, NVME_COMPLETION_QUEUE *cq, uint32_t i
 int NVMEConfigureSQ(NVME_CONTROLLER *ctrl, NVME_SUBMISSION_QUEUE *sq, uint32_t idx, uint32_t len)
 {
     NVMEConfigureQ(ctrl, &sq->COM, idx, len);
-    sq->SQE = 0;
     uint64_t phyAddr = 0;
-    uint64_t pagCont = 1;
     phyAddr = (uint64_t)alloc_dma(1);
     sq->SQE = (NVME_SUBMISSION_QUEUE_ENTRY *)physmap(phyAddr, 0x1000, PROT_READ | PROT_WRITE);
     memset(sq->SQE, 0, 0x1000);
@@ -79,7 +77,7 @@ NVME_COMPLETION_QUEUE_ENTRY NVMEWaitingCMD(NVME_SUBMISSION_QUEUE *sq, NVME_SUBMI
     NVME_COMPLETION_QUEUE_ENTRY errcqe;
     memset(&errcqe, 0xFF, sizeof(NVME_COMPLETION_QUEUE_ENTRY));
 
-    if (((sq->COM.HAD + 1) % (sq->COM.MSK + 1ULL)) == sq->COM.TAL)
+    if (((sq->COM.TAL + 1) % (sq->COM.MSK + 1ULL)) == sq->COM.HAD)
     {
         printf("SUBMISSION QUEUE IS FULL\n");
         return errcqe;
@@ -88,16 +86,16 @@ NVME_COMPLETION_QUEUE_ENTRY NVMEWaitingCMD(NVME_SUBMISSION_QUEUE *sq, NVME_SUBMI
     // Commit
     NVME_SUBMISSION_QUEUE_ENTRY *sqe = sq->SQE + sq->COM.TAL;
     memcpy(sqe, e, sizeof(NVME_SUBMISSION_QUEUE_ENTRY));
-    sqe->CDW0 |= sq->COM.TAL << 16;
+    sqe->CDW0 |= (uint32_t)sq->COM.TAL << 16;
 
     // Doorbell
     sq->COM.TAL++;
     sq->COM.TAL %= (sq->COM.MSK + 1ULL);
-    sq->COM.DBL[0] = sq->COM.TAL;
+    sq->COM.DBL[0] = (uint32_t)sq->COM.TAL;
 
     // Check completion
     NVME_COMPLETION_QUEUE *cq = sq->ICQ;
-    while ((cq->CQE[cq->COM.HAD].STS & 1) != cq->COM.PHA)
+    while ((cq->CQE[cq->COM.HAD].STS & 0x1) != cq->COM.PHA)
     {
         __asm__ __volatile__("pause");
     }
@@ -116,7 +114,7 @@ NVME_COMPLETION_QUEUE_ENTRY NVMEWaitingCMD(NVME_SUBMISSION_QUEUE *sq, NVME_SUBMI
         sq->COM.HAD = cqe->QHD;
     }
     // Doorbell
-    cq->COM.DBL[0] = cq->COM.HAD;
+    cq->COM.DBL[0] = (uint32_t)cq->COM.HAD;
     return *cqe;
 }
 
@@ -145,8 +143,8 @@ uint32_t NVMETransfer(NVME_NAMESPACE *ns, void *buf, uint64_t lba, uint32_t coun
     sqe.DATA[0] = virttophys(bufAddr);
     sqe.DATA[1] = 0;
     sqe.NSID = ns->NSID;
-    sqe.CDWA = lba;
-    sqe.CDWB = lba >> 32;
+    sqe.CDWA = (uint32_t)(lba & 0xFFFFFFFF);
+    sqe.CDWB = (uint32_t)(lba >> 32);
     sqe.CDWC = (1UL << 31) | ((count - 1) & 0xFFFF);
     NVME_COMPLETION_QUEUE_ENTRY cqe = NVMEWaitingCMD(&ns->CTRL->ISQ, &sqe);
     if ((cqe.STS >> 1) & 0xFF)
@@ -189,16 +187,6 @@ void failed_namespace(NVME_IDENTIFY_NAMESPACE *identifyNS)
     free_dma(virttophys((uint64_t)identifyNS), 1);
 }
 
-int NvmeRead(void *dev, void *buf, size_t count, int idx, int flags)
-{
-    return NVMETransfer((NVME_NAMESPACE *)dev, buf, idx, count, false);
-}
-
-int NvmeWrite(void *dev, void *buf, size_t count, int idx, int flags)
-{
-    return NVMETransfer((NVME_NAMESPACE *)dev, buf, idx, count, true);
-}
-
 void nvme_driver_init(uint64_t bar0, uint64_t bar_size)
 {
     NVME_CAPABILITY *cap = (NVME_CAPABILITY *)physmap(bar0, bar_size, PROT_READ | PROT_WRITE);
@@ -239,7 +227,7 @@ void nvme_driver_init(uint64_t bar0, uint64_t bar_size)
     }
     ctrl->ASQ.ICQ = &ctrl->ACQ;
 
-    ctrl->CAP->AQA = (ctrl->ACQ.COM.MSK << 16) | ctrl->ASQ.COM.MSK;
+    ctrl->CAP->AQA = ((uint32_t)ctrl->ACQ.COM.MSK << 16) | ctrl->ASQ.COM.MSK;
     ctrl->CAP->ASQ = virttophys((uint64_t)ctrl->ASQ.SQE);
     ctrl->CAP->ACQ = virttophys((uint64_t)ctrl->ACQ.CQE);
 
@@ -320,7 +308,7 @@ void nvme_driver_init(uint64_t bar0, uint64_t bar_size)
         ccq.META = 0;
         ccq.DATA[0] = virttophys((uint64_t)ctrl->ICQ.CQE);
         ccq.DATA[1] = 0;
-        ccq.CDWA = (ctrl->ICQ.COM.MSK << 16) | (qidx >> 1);
+        ccq.CDWA = ((uint32_t)ctrl->ICQ.COM.MSK << 16) | (qidx >> 1);
         ccq.CDWB = 1;
 
         cqe = NVMEWaitingCMD(&ctrl->ASQ, &ccq);
@@ -350,7 +338,7 @@ void nvme_driver_init(uint64_t bar0, uint64_t bar_size)
         csq.META = 0;
         csq.DATA[0] = virttophys((uint64_t)ctrl->ISQ.SQE);
         csq.DATA[1] = 0;
-        csq.CDWA = (ctrl->ICQ.COM.MSK << 16) | (qidx >> 1);
+        csq.CDWA = ((uint32_t)ctrl->ISQ.COM.MSK << 16) | (qidx >> 1);
         csq.CDWB = ((qidx >> 1) << 16) | 1;
 
         cqe = NVMEWaitingCMD(&ctrl->ASQ, &csq);
@@ -423,8 +411,8 @@ void nvme_driver_init(uint64_t bar0, uint64_t bar_size)
         if (ns->BSZ > 0x1000)
         {
             printf("BLOCK SIZE > 0x1000 !!!\n");
-            free(ns);
             failed_namespace(identifyNS);
+            free(ns);
             return;
         }
 
@@ -447,6 +435,8 @@ void nvme_driver_init(uint64_t bar0, uint64_t bar_size)
         ioctl(fd, SCHEME_IOCTL_REGIST_BLKDEV, 512);
 
         close(fd);
+
+        nvme_device_num++;
     }
 
     return;

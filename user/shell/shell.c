@@ -14,6 +14,8 @@ int main()
         printf("file %s\ttype %s\n", buf[i].name, buf[i].type == file_dir ? "dir" : "file");
     }
 
+    close(fd);
+
     while (1)
     {
         __asm__ __volatile__("pause");

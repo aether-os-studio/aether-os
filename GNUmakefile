@@ -8,7 +8,7 @@ KVM ?= 0
 SUDO ?= 0
 
 # Default user QEMU flags. These are appended to the QEMU command calls.
-QEMUFLAGS := -M q35 -cpu max -m 4G -smp $(SMP) -d cpu_reset
+QEMUFLAGS := -M q35 -cpu max -m 4G -smp $(SMP) -d cpu_reset,trace:pci_nvme_mmio_doorbell*
 
 ifeq ($(DEBUG), 1)
 QEMUFLAGS += -s -S
@@ -62,18 +62,16 @@ ifeq ($(SUDO), 1)
 		-M q35 \
 		-drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-code-x86_64.fd,readonly=on \
 		-drive if=none,file=$(IMAGE_NAME).hdd,format=raw,id=harddisk \
-		-boot d \
 		-device ahci,id=ahci \
-		-device ide-hd,drive=harddisk,bus=ahci.0 \
+		-device nvme,drive=harddisk,serial=1234 \
 		$(QEMUFLAGS)
 else
 	qemu-system-x86_64 \
 		-M q35 \
 		-drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-code-x86_64.fd,readonly=on \
 		-drive if=none,file=$(IMAGE_NAME).hdd,format=raw,id=harddisk \
-		-boot d \
 		-device ahci,id=ahci \
-		-device ide-hd,drive=harddisk,bus=ahci.0 \
+		-device nvme,drive=harddisk,serial=1234 \
 		$(QEMUFLAGS)
 endif
 
