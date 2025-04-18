@@ -11,6 +11,7 @@ typedef struct scheme
     char target_name[SCHEME_NAME_MAX];
     uint64_t offset;
     uint64_t command_d;
+    struct scheme *parent;
     task_t *task;
     void *user_scheme;
 } scheme_t;

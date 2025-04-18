@@ -6,17 +6,31 @@
 #include <kprint.h>
 #include <syscall/syscall.h>
 
-scheme_t taskid_to_user_schemes[MAX_TASK_NUM];
+extern uint64_t cpu_count;
+
+scheme_t schemes[MAX_TASK_NUM];
 
 void scheme_init()
 {
-    memset(taskid_to_user_schemes, 0, sizeof(taskid_to_user_schemes));
+    memset(schemes, 0, sizeof(schemes));
+}
+
+scheme_t *get_free_scheme()
+{
+    for (uint64_t i = cpu_count; i < MAX_TASK_NUM; i++)
+    {
+        if (schemes[i].name[0] == '\0')
+        {
+            return &schemes[i];
+        }
+    }
 }
 
 void scheme_create(const char *name, uint64_t ptr)
 {
-    scheme_t *scheme = &taskid_to_user_schemes[current_task->task_id];
+    scheme_t *scheme = get_free_scheme();
     strncpy(scheme->name, name, SCHEME_NAME_MAX);
+    scheme->parent = NULL;
     scheme->task = current_task;
     scheme->user_scheme = (void *)translate_addr(get_current_page_dir(), ptr);
     scheme->offset = 0;
@@ -34,18 +48,22 @@ void scheme_create(const char *name, uint64_t ptr)
 
 scheme_t *scheme_open(const char *name)
 {
-    for (uint64_t i = 0; i < MAX_TASK_NUM; i++)
+    for (uint64_t i = cpu_count; i < MAX_TASK_NUM; i++)
     {
-        if (taskid_to_user_schemes[i].name[0] == '\0')
+        if (schemes[i].name[0] == '\0')
             continue;
 
-        if (taskid_to_user_schemes[i].target_name[0] != '\0')
-            continue;
-
-        if (!strncmp(name, taskid_to_user_schemes[i].name, strlen(taskid_to_user_schemes[i].name)))
+        if (!strncmp(name, schemes[i].name, strlen(schemes[i].name)))
         {
-            uint64_t idx = strlen(taskid_to_user_schemes[i].name) + 1;
-            scheme_t *scheme = &taskid_to_user_schemes[i];
+            scheme_t *scheme = &schemes[i];
+            if (scheme->target_name[0] != '\0')
+            {
+                scheme_t *new_scheme = get_free_scheme();
+                memcpy(new_scheme, scheme, sizeof(scheme_t));
+                new_scheme->parent = scheme;
+                scheme = new_scheme;
+            }
+            uint64_t idx = strlen(schemes[i].name) + 1;
             strncpy(scheme->target_name, name + idx, SCHEME_NAME_MAX);
             return scheme;
         }
@@ -56,7 +74,14 @@ scheme_t *scheme_open(const char *name)
 
 void scheme_close(scheme_t *scheme)
 {
-    scheme->target_name[0] = '\0';
+    if (scheme->parent)
+    {
+        memset(scheme, 0, sizeof(scheme_t));
+    }
+    else
+    {
+        scheme->target_name[0] = '\0';
+    }
 }
 
 uint64_t scheme_transfer(scheme_t *scheme, uint64_t cmd, uint64_t buffer, uint64_t len)
