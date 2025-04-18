@@ -261,10 +261,17 @@ uint64_t sys_close(uint64_t fd)
 
 uint64_t sys_getdents(uint64_t fd, uint64_t buf, uint64_t size)
 {
-    if (!current_task->schemes[fd])
-        return (uint64_t)-EBADF;
+    if (fd < MAX_FD_NUM)
+    {
+        if (!current_task->schemes[fd])
+            return (uint64_t)-EBADF;
 
-    return scheme_readdir(current_task->schemes[fd], buf, size);
+        return scheme_readdir(current_task->schemes[fd], buf, size);
+    }
+    else
+    {
+        return fsd_readdir(fd, buf, size);
+    }
 }
 
 extern void sys_load_module(const char *, char **, char **);

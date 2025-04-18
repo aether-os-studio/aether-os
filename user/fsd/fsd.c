@@ -94,6 +94,28 @@ uint64_t fsd_lseek(uint64_t pid, uint64_t fd, uint64_t offset)
     fs->fds[fd - 16].offset = offset;
 }
 
+uint64_t fsd_readdir(uint64_t pid, uint64_t fd, uint64_t buf, uint64_t size)
+{
+    fs_t *fs = &pid_to_fs[pid];
+    if (fd >= MAX_FD_NUM)
+    {
+        return (uint64_t)-EFAULT;
+    }
+    vfs_node_t node = fs->fds[fd - 16].node;
+
+    uint64_t len = 0;
+    dirent_t *dirents = (dirent_t *)buf;
+    list_foreach(node->child, i)
+    {
+        vfs_node_t child = (vfs_node_t)i->data;
+        strncpy(dirents[len].name, child->name, 255);
+        dirents[len].type = child->type;
+        len++;
+    }
+
+    return len;
+}
+
 uint64_t fsd_close(uint64_t pid, uint64_t fd)
 {
     fs_t *fs = &pid_to_fs[pid];
@@ -179,6 +201,9 @@ uint64_t fsd_daemon(daemon_t *daemon)
                 break;
             case FSD_LSEEK:
                 result = fsd_lseek(fsd_command.d, fsd_command.a, fsd_command.b);
+                break;
+            case FSD_READDIR:
+                result = fsd_readdir(fsd_command.d, fsd_command.a, fsd_command.b, fsd_command.c);
                 break;
             case FSD_CLOSE:
                 result = fsd_close(fsd_command.d, fsd_command.a);

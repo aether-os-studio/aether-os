@@ -120,6 +120,26 @@ uint64_t fsd_lseek(uint64_t fd, uint64_t offset)
     return wait_command();
 }
 
+uint64_t fsd_readdir(uint64_t fd, uint64_t buf, uint64_t size)
+{
+    spin_lock(&fs_op_lock);
+
+    fsd_user_command_addr->a = fd;
+    uint64_t buf_phys = translate_addr(get_current_page_dir(), (uint64_t)buf);
+    uint64_t buf_virt = USER_SPACE_BUFFER_MAPPING_OFFSET + buf_phys;
+    if (buf_phys == 0)
+    {
+        return (uint64_t)-EINVAL;
+    }
+    page_map_range_to(fsd_pgdir, buf_virt, buf_phys, size * sizeof(dirent_t), USER_PTE_FLAGS);
+    fsd_user_command_addr->b = buf_virt;
+    fsd_user_command_addr->c = size;
+    fsd_user_command_addr->d = current_task->task_id;
+    fsd_user_command_addr->cmd = FSD_READDIR;
+
+    return wait_command();
+}
+
 uint64_t fsd_close(uint64_t fd)
 {
     spin_lock(&fs_op_lock);

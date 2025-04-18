@@ -15,8 +15,15 @@ enum
     FSD_WRITE,
     FSD_IOCTL,
     FSD_LSEEK,
+    FSD_READDIR,
     FSD_CLOSE,
 };
+
+typedef struct dirent
+{
+    char name[255];
+    uint8_t type;
+} dirent_t;
 
 void sys_regist_fs(uint64_t arg);
 
@@ -25,4 +32,5 @@ uint64_t fsd_read(uint64_t fd, uint64_t buf, uint64_t len);
 uint64_t fsd_write(uint64_t fd, uint64_t buf, uint64_t len);
 uint64_t fsd_ioctl(uint64_t fd, uint64_t cmd, uint64_t arg);
 uint64_t fsd_lseek(uint64_t fd, uint64_t offset);
+uint64_t fsd_readdir(uint64_t fd, uint64_t buf, uint64_t size);
 uint64_t fsd_close(uint64_t fd);
