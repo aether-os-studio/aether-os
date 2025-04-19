@@ -56,7 +56,7 @@ typedef enum task_state
     TASK_DIED,
 } task_state_t;
 
-#define TASK_NAME_LEN 64
+#define TASK_NAME_LEN 128
 
 typedef struct task_thread
 {

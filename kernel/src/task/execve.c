@@ -252,6 +252,8 @@ uint64_t sys_execve(const char *name, char **argv, char **envp)
         }
     }
 
+    strncpy(current_task->name, name, TASK_NAME_LEN);
+
     char buf[128];
     task_to_user_mode(e_entry, load_start, load_end, argv, envp);
 }

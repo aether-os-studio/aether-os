@@ -207,7 +207,7 @@ void task_init()
     {
         idle_tasks[i] = task_create("idle", idle_thread, KERNEL_USER);
     }
-    task_create("init", init_thread, NORMAL_USER);
+    task_create("/usr/bin/initd.exec", init_thread, NORMAL_USER);
 
     irq_register(APIC_TIMER_INTERRUPT_VECTOR, timer_handler, 0, &apic_timer_controller, "APIC TIMER");
 

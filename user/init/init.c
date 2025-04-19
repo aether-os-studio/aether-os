@@ -79,10 +79,16 @@ int main(int argc, char **argv)
         waitpid(child_pid, &status);
     }
 
-    int ret = execve("/usr/bin/shell.exec", NULL, NULL);
-    if (ret < 0)
+restart_shell:
+    child_pid = fork();
+    if (child_pid == 0)
     {
-        printf("execve shell failed\n");
+        execve("/usr/bin/shell.exec", NULL, NULL);
+    }
+    else
+    {
+        waitpid(child_pid, &status);
+        goto restart_shell;
     }
 
     while (1)
