@@ -115,6 +115,8 @@ uint64_t fsd_readdir(uint64_t pid, uint64_t fd, uint64_t buf, uint64_t size)
     dirent_t *dirents = (dirent_t *)buf;
     list_foreach(node->child, i)
     {
+        if (len >= size)
+            break;
         vfs_node_t child = (vfs_node_t)i->data;
         strncpy(dirents[len].name, child->name, 255);
         dirents[len].type = child->type;
@@ -145,6 +147,11 @@ uint64_t fsd_chdir(uint64_t pid, const char *dirname)
     else
     {
         sprintf(buf, "%s", dirname);
+    }
+    if (streq(dirname, "/"))
+    {
+        fs->cwd = rootdir;
+        return 0;
     }
     vfs_node_t node = vfs_open(buf);
     if (!node)
@@ -184,6 +191,8 @@ fsd_close(uint64_t pid, uint64_t fd)
     }
     vfs_node_t node = fs->fds[fd - 16].node;
     vfs_close(node);
+    fs->fds[fd - 16].node = NULL;
+    fs->fds[fd - 16].offset = 0;
 
     return 0;
 }

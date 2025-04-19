@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include "pl_readline.h"
 
+char *path = NULL;
+
 int getc()
 {
     int ch = (int)getchar();
@@ -38,32 +40,18 @@ void flush()
 
 static void handle_tab(char *buf, pl_readline_words_t words)
 {
+    pl_readline_word_maker_add("cd", words, true, ' ');
+    pl_readline_word_maker_add("clear", words, true, ' ');
     pl_readline_word_maker_add("ls", words, true, ' ');
 
     if (buf[0] != '/' && strlen(buf))
     {
         return;
     }
-    char *s = malloc(strlen(buf) + 2);
-    memcpy(s, buf, strlen(buf) + 1);
-    if (strlen(s))
-    {
-        for (isize i = strlen(s); i >= 0; i--)
-        {
-            if (s[i] == '/')
-            {
-                s[i + 1] = '\0';
-                break;
-            }
-        }
-    }
-    else
-    {
-        s[0] = '/';
-        s[1] = '\0';
-    }
+    char path_name[256];
+    sprintf(path_name, "%s%s", path, buf);
 
-    int fd = open(s, 0, 0);
+    int fd = open(path_name, 0, 0);
     dirent_t dents[128];
     int num = getdents(fd, dents, 128);
     if (num < 0)
@@ -74,9 +62,12 @@ static void handle_tab(char *buf, pl_readline_words_t words)
 
     for (int i = 0; i < num; i++)
     {
-        char *new_path = pathacat(s, dents[i].name);
-        pl_readline_word_maker_add(new_path, words, false, dents[i].type == file_dir ? '/' : ' ');
+        // char *new_path = pathacat(s, dents[i].name);
+        // pl_readline_word_maker_add(new_path, words, false, dents[i].type == file_dir ? '/' : ' ');
+        pl_readline_word_maker_add(dents[i].name, words, false, dents[i].type == file_dir ? '/' : ' ');
     }
+
+    // free(s);
 
     close(fd);
 }
@@ -275,7 +266,7 @@ int main()
 {
     printf("shell is running\n");
 
-    char *path = malloc(1024);
+    path = malloc(1024);
     memset(path, 0, 1024);
     sprintf(path, "/");
 
