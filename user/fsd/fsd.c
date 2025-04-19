@@ -72,6 +72,10 @@ uint64_t fsd_ioctl(uint64_t pid, uint64_t fd, uint64_t cmd, uint64_t arg)
     {
         return (uint64_t)-EBADF;
     }
+    if (node == NULL)
+    {
+        return (uint64_t)-EBADF;
+    }
     switch (cmd)
     {
     case FSD_IOCTL_GETSIZE:
@@ -102,6 +106,10 @@ uint64_t fsd_readdir(uint64_t pid, uint64_t fd, uint64_t buf, uint64_t size)
         return (uint64_t)-EFAULT;
     }
     vfs_node_t node = fs->fds[fd - 16].node;
+    if (node == NULL)
+    {
+        return (uint64_t)-EBADF;
+    }
 
     uint64_t len = 0;
     dirent_t *dirents = (dirent_t *)buf;

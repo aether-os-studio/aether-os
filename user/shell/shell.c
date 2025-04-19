@@ -120,7 +120,7 @@ static int shell_exec(char *path, const char *command)
     }
     else
     {
-        printf("%s: command not found", command);
+        printf("%s: command not found\n", command);
         retcode = -1;
     }
 

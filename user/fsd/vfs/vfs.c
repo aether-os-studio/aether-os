@@ -277,6 +277,8 @@ int vfs_close(vfs_node_t node)
         return -1;
     if (node->handle == NULL)
         return 0;
+    if (node == rootdir)
+        return -EPERM;
     callbackof(node, close)(node->handle);
     node->handle = NULL;
     return 0;
