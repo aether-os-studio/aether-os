@@ -24,23 +24,26 @@ enum special_key_code
     KEY_NUML,
     KEY_SCROLL,
     KEY_F11,
-    KEY_F12
+    KEY_F12,
+    KEY_UP,
+    KEY_DOWN,
+    KEY_LEFT,
+    KEY_RIGHT,
 };
 
-uint8_t keyboard_code[256] = {
-    0, KEY_ESC, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', KEY_BACKSPACE,
-    KEY_TAB, 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', KEY_ENTER,
-    KEY_CTRL, 'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', '\'', '`',
-    KEY_SHIFT, '\\', 'z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/', KEY_SHIFT,
-    '*', KEY_ALT, KEY_SPACE, KEY_CAPS, KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6, KEY_F7, KEY_F8, KEY_F9, KEY_F10,
-    KEY_NUML, KEY_SCROLL, '7', '8', '9', '-', '4', '5', '6', '+', '1', '2', '3', '0', '.', 0, 0, 0, KEY_F11, KEY_F12}; // +0x80 = 释放状态
-uint8_t keyboard_code1[256] = {                                                                                        // 按下Shift
-    0, KEY_ESC, '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+', KEY_BACKSPACE,
-    KEY_TAB, 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{', '}', KEY_ENTER,
-    KEY_CTRL, 'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ':', '\"', '~',
-    KEY_SHIFT, '|', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', '<', '>', '?', KEY_SHIFT,
-    '*', KEY_ALT, KEY_SPACE, KEY_CAPS, KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6, KEY_F7, KEY_F8, KEY_F9, KEY_F10,
-    KEY_NUML, KEY_SCROLL, '7', '8', '9', '-', '4', '5', '6', '+', '1', '2', '3', '0', '.', 0, 0, 0, KEY_F11, KEY_F12};
+static char keyboard_code[0x54] = { // 未按下Shift
+    0, 0x01, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', '\b', '\t', 'q',
+    'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', 10, 0, 'a', 's', 'd', 'f',
+    'g', 'h', 'j', 'k', 'l', ';', '\'', '`', 0, '\\', 'z', 'x', 'c', 'v', 'b', 'n', 'm',
+    ',', '.', '/', 0, '*', 0, ' ', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, '7', '8', '9', '-', '4', '5', '6', '+', '1', '2', '3', '0', '.'};
+
+static char keyboard_code1[0x54] = { // 按下Shift
+    0, 0x01, '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+', '\b', '\t', 'Q',
+    'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{', '}', 10, 0, 'A', 'S', 'D', 'F',
+    'G', 'H', 'J', 'K', 'L', ':', '\"', '~', 0, '|', 'Z', 'X', 'C', 'V', 'B', 'N', 'M',
+    '<', '>', '?', 0, '*', 0, ' ', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, '7', 'D', '8', '-', '4', '5', '6', '+', '1', '2', '3', '0', '.'};
 
 struct keyboard_buf kb_fifo;
 
@@ -92,27 +95,46 @@ void parse_scan_code(uint8_t x)
         kb_fifo.p_head = kb_fifo.buf;
     }
 
-    *kb_fifo.p_head = x;
-    kb_fifo.count++;
-    kb_fifo.p_head++;
+    if (x < 0x80)
+    {
+        *kb_fifo.p_head = x;
+        kb_fifo.count++;
+        kb_fifo.p_head++;
+    }
 }
 
 uint8_t get_keyboard_input()
 {
     if (kb_fifo.p_tail != kb_fifo.p_head)
     {
-        // 有没有读的
-        uint8_t temp = keyboard_code[*kb_fifo.p_tail];
-        if (kb_fifo.shift == 1 || kb_fifo.caps == 1)
+        uint8_t temp = 0;
+
+        uint8_t x = *kb_fifo.p_tail;
+
+        if (x == 0x48)
+            temp = (uint8_t)-1;
+        if (x == 0x50)
+            temp = (uint8_t)-2;
+        if (x == 0x4b)
+            temp = (uint8_t)-3;
+        if (x == 0x4d)
+            temp = (uint8_t)-4;
+        else
         {
-            temp = keyboard_code1[*kb_fifo.p_tail];
+            temp = keyboard_code[x];
+            if (kb_fifo.shift == 1 || kb_fifo.caps == 1)
+            {
+                temp = keyboard_code1[x];
+            }
         }
 
         if (kb_fifo.p_tail == kb_fifo.buf + KB_BUF_SIZE)
         {
             kb_fifo.p_tail = kb_fifo.buf;
         }
+
         kb_fifo.p_tail++;
+
         return temp;
     }
 

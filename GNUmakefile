@@ -154,7 +154,7 @@ $(IMAGE_NAME).hdd: limine/limine kernel user
 clean:
 	$(MAKE) -C kernel clean
 	$(MAKE) -C user clean
-	rm -rf iso_root $(IMAGE_NAME).iso $(IMAGE_NAME).hdd
+	rm -rf iso_root $(IMAGE_NAME).iso $(IMAGE_NAME).hdd $(IMAGE_NAME).vmdk
 
 .PHONY: distclean
 distclean: clean

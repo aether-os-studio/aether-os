@@ -192,6 +192,8 @@ void tss_init()
 
 bool task_initialized = false;
 
+extern void kbd_init();
+
 void task_init()
 {
     kbd_init();

@@ -16,4 +16,5 @@ all:
 	$(MAKE) -C shell
 
 clean:
-	rm -rf $(shell find . -name "*.o") $(shell find . -name "*.exec") obj/
+	$(MAKE) -C shell/pl_readline clean
+	@rm -rf $(shell find . -name "*.o") $(shell find . -name "*.exec") obj/

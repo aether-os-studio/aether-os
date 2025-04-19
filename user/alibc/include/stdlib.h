@@ -1,10 +1,14 @@
 #pragma once
 
 #include <stddef.h>
+#include <stdio.h>
 
 void *malloc(size_t size);
 void *realloc(void *ptr, size_t newsize);
 void free(void *ptr);
+
+void exit(int code);
+void abort();
 
 static inline void *memcpy(void *To, void *From, long Num)
 {
@@ -218,4 +222,19 @@ static inline int strlen(char *String)
     return __res;
 }
 
+static inline char *pathacat(const char *p1, const char *p2)
+{
+    char *p = (char *)malloc(strlen(p1) + strlen(p2) + 2);
+    if (p1[strlen(p1) - 1] == '/')
+    {
+        sprintf(p, "%s%s", p1, p2);
+    }
+    else
+    {
+        sprintf(p, "%s/%s", p1, p2);
+    }
+    return p;
+}
+
+void *memmove(void *dst, void *src, int count);
 char *strdup(const char *s);

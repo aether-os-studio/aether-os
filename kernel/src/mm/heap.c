@@ -1,157 +1,193 @@
 #include <mm/page.h>
 #include <mm/heap.h>
+#include <mm/llist.h>
+
+heap_t kheap;
+
+void init_heap(heap_t *heap, uint64_t start);
 
 void heap_init()
 {
     page_map_range_to(get_kernel_page_dir(), KERNEL_HEAP_START, 0, KERNEL_HEAP_SIZE, KERNEL_PTE_FLAGS);
 
-    memory_init(KERNEL_HEAP_START, KERNEL_HEAP_SIZE);
+    init_heap(&kheap, KERNEL_HEAP_START);
 }
 
-typedef struct heap_block
+uint offset = 8;
+
+void init_heap(heap_t *heap, uint64_t start)
 {
-    size_t size;
-    bool free;
-    struct heap_block *next;
-    struct heap_block *prev;
-} heap_block_t;
+    memset(heap, 0, sizeof(heap_t));
 
-#define HEAP_BLOCK_HEADER_SIZE sizeof(heap_block_t)
-#define HEAP_MIN_SIZE (4 * 1024)
-#define HEAP_ALIGNMENT 8
+    uint64_t addition_len = 0;
+    for (int i = 0; i < BIN_COUNT; i++)
+    {
+        heap->bins[i] = (bin_t *)start;
+        start += sizeof(bin_t);
+        addition_len += sizeof(bin_t);
+    }
 
-static heap_block_t *heap_start = NULL;
-static heap_block_t *heap_end = NULL;
-static uint64_t heap_base_addr = 0;
-static uint64_t heap_total_size = 0;
+    node_t *init_region = (node_t *)start;
+    init_region->hole = 1;
+    init_region->size = KERNEL_HEAP_SIZE - addition_len - sizeof(node_t) - sizeof(footer_t);
 
-void memory_init(uint64_t start_addr, uint64_t size)
+    create_foot(init_region);
+
+    add_node(heap->bins[get_bin_index(init_region->size)], init_region);
+
+    heap->start = (uint64_t)start;
+    heap->end = (uint64_t)(start + KERNEL_HEAP_SIZE - addition_len);
+}
+
+void *heap_alloc(heap_t *heap, size_t size)
 {
-    if (size < HEAP_MIN_SIZE)
+    uint index = get_bin_index(size);
+    bin_t *temp = (bin_t *)heap->bins[index];
+    node_t *found = get_best_fit(temp, size);
+
+    while (found == NULL)
+    {
+        if (index + 1 >= BIN_COUNT)
+            return NULL;
+
+        temp = heap->bins[++index];
+        found = get_best_fit(temp, size);
+    }
+
+    if ((found->size - size) > (overhead + MIN_ALLOC_SZ))
+    {
+        node_t *split = (node_t *)(((char *)found + sizeof(node_t) + sizeof(footer_t)) + size);
+        split->size = found->size - size - sizeof(node_t) - sizeof(footer_t);
+        split->hole = 1;
+
+        create_foot(split);
+
+        uint new_idx = get_bin_index(split->size);
+
+        add_node(heap->bins[new_idx], split);
+
+        found->size = size;
+        create_foot(found);
+    }
+
+    found->hole = 0;
+    remove_node(heap->bins[index], found);
+
+    node_t *wild = get_wilderness(heap);
+    if (wild->size < MIN_WILDERNESS)
+    {
+        uint success = expand(heap, 0x1000);
+        if (success == 0)
+        {
+            return NULL;
+        }
+    }
+    else if (wild->size > MAX_WILDERNESS)
+    {
+        contract(heap, 0x1000);
+    }
+
+    found->prev = NULL;
+    found->next = NULL;
+    return &found->next;
+}
+
+void heap_free(heap_t *heap, void *p)
+{
+    bin_t *list;
+    footer_t *new_foot, *old_foot;
+
+    node_t *head = (node_t *)((char *)p - offset);
+    if (head == (node_t *)(uintptr_t)heap->start)
+    {
+        head->hole = 1;
+        add_node(heap->bins[get_bin_index(head->size)], head);
         return;
+    }
 
-    // Ensure the start address is properly aligned
-    start_addr = (start_addr + HEAP_ALIGNMENT - 1) & ~(HEAP_ALIGNMENT - 1);
+    node_t *next = (node_t *)((char *)get_foot(head) + sizeof(footer_t));
+    footer_t *f = (footer_t *)((char *)head - sizeof(footer_t));
+    node_t *prev = f->header;
 
-    heap_base_addr = start_addr;
-    heap_total_size = size;
+    if (prev->hole)
+    {
+        list = heap->bins[get_bin_index(prev->size)];
+        remove_node(list, prev);
 
-    heap_start = (heap_block_t *)start_addr;
-    heap_start->size = size - HEAP_BLOCK_HEADER_SIZE;
-    heap_start->free = true;
-    heap_start->next = NULL;
-    heap_start->prev = NULL;
-    heap_end = heap_start;
+        prev->size += overhead + head->size;
+        new_foot = get_foot(head);
+        new_foot->header = prev;
+
+        head = prev;
+    }
+
+    if (next->hole)
+    {
+        list = heap->bins[get_bin_index(next->size)];
+        remove_node(list, next);
+
+        head->size += overhead + next->size;
+
+        old_foot = get_foot(next);
+        old_foot->header = 0;
+        next->size = 0;
+        next->hole = 0;
+
+        new_foot = get_foot(head);
+        new_foot->header = head;
+    }
+
+    head->hole = 1;
+    add_node(heap->bins[get_bin_index(head->size)], head);
+}
+
+uint expand(heap_t *heap, size_t sz)
+{
+    return 0;
+}
+
+void contract(heap_t *heap, size_t sz)
+{
+    return;
+}
+
+uint get_bin_index(size_t sz)
+{
+    uint index = 0;
+    sz = sz < 4 ? 4 : sz;
+
+    while (sz >>= 1)
+        index++;
+    index -= 2;
+
+    if (index > BIN_MAX_IDX)
+        index = BIN_MAX_IDX;
+    return index;
+}
+
+void create_foot(node_t *head)
+{
+    footer_t *foot = get_foot(head);
+    foot->header = head;
+}
+
+footer_t *get_foot(node_t *node)
+{
+    return (footer_t *)((uint64_t)node + node->size + sizeof(node_t));
+}
+
+node_t *get_wilderness(heap_t *heap)
+{
+    footer_t *wild_foot = (footer_t *)((char *)heap->end - sizeof(footer_t));
+    return wild_foot->header;
 }
 
 void *malloc(size_t size)
 {
-    if (size == 0 || heap_start == NULL)
-        return NULL;
-
-    // Align the requested size
-    size = (size + HEAP_ALIGNMENT - 1) & ~(HEAP_ALIGNMENT - 1);
-
-    heap_block_t *current = heap_start;
-    while (current)
-    {
-        // Verify block is within heap bounds
-        if ((uint64_t)current < heap_base_addr ||
-            (uint64_t)current >= heap_base_addr + heap_total_size)
-        {
-            return NULL; // Corrupted heap
-        }
-
-        if (current->free)
-        {
-            // Check if current block can fit the requested size + header
-            if (current->size >= size)
-            {
-                // Check if we can split the block
-                if (current->size > size + HEAP_BLOCK_HEADER_SIZE + HEAP_ALIGNMENT)
-                {
-                    heap_block_t *new_block = (heap_block_t *)((char *)current + HEAP_BLOCK_HEADER_SIZE + size);
-
-                    // Verify new block is within bounds
-                    if ((uint64_t)new_block >= heap_base_addr + heap_total_size)
-                    {
-                        // Can't split - just use the whole block
-                        current->free = false;
-                        return (void *)((char *)current + HEAP_BLOCK_HEADER_SIZE);
-                    }
-
-                    // Initialize new block
-                    new_block->size = current->size - size - HEAP_BLOCK_HEADER_SIZE;
-                    new_block->free = true;
-                    new_block->next = current->next;
-                    new_block->prev = current;
-
-                    if (current->next)
-                        current->next->prev = new_block;
-                    current->next = new_block;
-
-                    // Update current block size
-                    current->size = size;
-
-                    // Update heap_end if we're at the end
-                    if (current == heap_end)
-                        heap_end = new_block;
-                }
-
-                current->free = false;
-                return (void *)((char *)current + HEAP_BLOCK_HEADER_SIZE);
-            }
-        }
-        current = current->next;
-    }
-    return NULL; // No suitable block found
+    return heap_alloc(&kheap, size);
 }
 
 void free(void *ptr)
 {
-    if (ptr == NULL || heap_start == NULL)
-        return;
-
-    // Get the block header and verify it's within heap bounds
-    heap_block_t *block = (heap_block_t *)((char *)ptr - HEAP_BLOCK_HEADER_SIZE);
-    if ((uint64_t)block < heap_base_addr ||
-        (uint64_t)block >= heap_base_addr + heap_total_size)
-    {
-        return; // Invalid pointer
-    }
-
-    // Mark as free
-    block->free = true;
-
-    // Merge with next block if free
-    if (block->next && block->next->free)
-    {
-        // Verify next block is within bounds
-        if ((uint64_t)block->next >= heap_base_addr &&
-            (uint64_t)block->next < heap_base_addr + heap_total_size)
-        {
-            block->size += block->next->size + HEAP_BLOCK_HEADER_SIZE;
-            block->next = block->next->next;
-            if (block->next)
-                block->next->prev = block;
-            else
-                heap_end = block;
-        }
-    }
-
-    // Merge with previous block if free
-    if (block->prev && block->prev->free)
-    {
-        // Verify previous block is within bounds
-        if ((uint64_t)block->prev >= heap_base_addr &&
-            (uint64_t)block->prev < heap_base_addr + heap_total_size)
-        {
-            block->prev->size += block->size + HEAP_BLOCK_HEADER_SIZE;
-            block->prev->next = block->next;
-            if (block->next)
-                block->next->prev = block->prev;
-            else
-                heap_end = block->prev;
-        }
-    }
+    heap_free(&kheap, ptr);
 }

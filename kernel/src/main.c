@@ -54,12 +54,12 @@ void kmain(void)
 
     sse_init();
 
-    printk_init(8, 16);
-
     hhdm_init();
     frame_init();
     page_init();
     heap_init();
+
+    printk_init();
 
     irq_init();
     acpi_init();

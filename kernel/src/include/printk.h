@@ -20,7 +20,7 @@
  * @param char_size_x 字符的列坐标
  * @param char_size_y 字符的行坐标
  */
-int printk_init(const int char_size_x, const int char_size_y);
+int printk_init();
 /**
  * @brief 将字符串按照fmt和args中的内容进行格式化，然后保存到buf中
  *

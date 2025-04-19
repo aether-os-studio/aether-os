@@ -65,8 +65,6 @@ void frame_init()
 
     frame_allocator.origin_frames = origin_frames;
     frame_allocator.usable_frames = origin_frames - bitmap_frame_count;
-
-    kdebug("Available memory: %lld MiB", (origin_frames / 256));
 }
 
 void free_frames(uint64_t addr, uint64_t size)

@@ -77,6 +77,8 @@ uint64_t lapic_id()
 
 uint64_t calibrated_timer_initial;
 
+void lapic_timer_stop();
+
 void local_apic_init(bool is_print)
 {
     x2apic_mode = ((mp_request.flags & LIMINE_MP_X2APIC) != 0);

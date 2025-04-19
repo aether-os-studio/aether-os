@@ -1,5 +1,6 @@
 #include <kprint.h>
 #include <klibc.h>
+#include <mm/heap.h>
 #include <lib/flanterm/backends/fb.h>
 #include <lib/flanterm/flanterm.h>
 
@@ -16,13 +17,13 @@ __attribute__((used, section(".limine_requests"))) volatile struct limine_frameb
     .id = LIMINE_FRAMEBUFFER_REQUEST,
     .revision = 0};
 
-int printk_init(const int char_size_x, const int char_size_y)
+int printk_init()
 {
     struct limine_framebuffer *framebuffer = framebuffer_request.response->framebuffers[0];
 
     ft_ctx = flanterm_fb_init(
-        NULL,
-        NULL,
+        malloc,
+        (void (*)(void *, size_t))free,
         (uint32_t *)framebuffer->address, framebuffer->width, framebuffer->height, framebuffer->pitch,
         framebuffer->red_mask_size, framebuffer->red_mask_shift,
         framebuffer->green_mask_size, framebuffer->green_mask_shift,

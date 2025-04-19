@@ -14,8 +14,6 @@ void task_to_user_mode(uint64_t addr, uint64_t load_start, uint64_t load_end, ch
 
     uint64_t stack = (uint64_t)current_task->context;
 
-    uint64_t backup_stack = stack;
-
     stack -= sizeof(struct pt_regs);
 
     struct pt_regs *iframe = (struct pt_regs *)stack;
@@ -173,7 +171,7 @@ uint64_t sys_execve(const char *name, char **argv, char **envp)
 
     fsd_lseek(fd, 0);
 
-    uint64_t ret = fsd_read(fd, buffer, file_size);
+    uint64_t ret = fsd_read(fd, (uint64_t)buffer, file_size);
     if ((int64_t)ret < 0)
     {
         kerror("Failed to read file %s", name);
@@ -189,7 +187,8 @@ uint64_t sys_execve(const char *name, char **argv, char **envp)
     if (e_entry == 0)
     {
         kerror("bad e_entry");
-        return;
+        free_frames(translate_addr(get_current_page_dir(), (uint64_t)buffer), (file_size + PAGE_SIZE - 1) / PAGE_SIZE);
+        return -EINVAL;
     }
 
     // 验证ELF魔数
@@ -198,7 +197,8 @@ uint64_t sys_execve(const char *name, char **argv, char **envp)
                4) != 0)
     {
         kerror("Invalid ELF magic\n");
-        return;
+        free_frames(translate_addr(get_current_page_dir(), (uint64_t)buffer), (file_size + PAGE_SIZE - 1) / PAGE_SIZE);
+        return -EINVAL;
     }
 
     // 检查架构和类型
@@ -207,7 +207,8 @@ uint64_t sys_execve(const char *name, char **argv, char **envp)
         (ehdr->e_type != 2))
     {
         kerror("Unsupported ELF format\n");
-        return;
+        free_frames(translate_addr(get_current_page_dir(), (uint64_t)buffer), (file_size + PAGE_SIZE - 1) / PAGE_SIZE);
+        return -EINVAL;
     }
 
     uint64_t load_start = UINT64_MAX;
@@ -252,8 +253,10 @@ uint64_t sys_execve(const char *name, char **argv, char **envp)
         }
     }
 
+    free_frames(translate_addr(get_current_page_dir(), (uint64_t)buffer), (file_size + PAGE_SIZE - 1) / PAGE_SIZE);
+
     strncpy(current_task->name, name, TASK_NAME_LEN);
 
-    char buf[128];
+    char buf[512];
     task_to_user_mode(e_entry, load_start, load_end, argv, envp);
 }
