@@ -1,5 +1,6 @@
 #include <libsyscall.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "pl_readline.h"
 
 int getc()
@@ -110,6 +111,17 @@ static int shell_exec(char *path, const char *command)
     if (!strcmp(command, "ls"))
     {
         retcode = list_files(path);
+    }
+    else if (!strcmp(command, "clear"))
+    {
+        printf("\033[0;0H");
+        printf("\033[2J");
+        retcode = 0;
+    }
+    else
+    {
+        printf("%s: command not found", command);
+        retcode = -1;
     }
 
     return retcode;
