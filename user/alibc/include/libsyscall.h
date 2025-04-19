@@ -16,6 +16,8 @@ enum
     SYS_CLOSE,
     SYS_LSEEK,
     SYS_IOCTL,
+    SYS_CHDIR,
+    SYS_GETCWD,
     SYS_GETDENTS,
     SYS_SIGACTION,
     SYS_SIGNAL,
@@ -204,6 +206,8 @@ enum
     FSD_IOCTL,
     FSD_LSEEK,
     FSD_READDIR,
+    FSD_CHDIR,
+    FSD_GETCWD,
     FSD_CLOSE,
 };
 
@@ -222,3 +226,6 @@ typedef struct dirent
 } dirent_t;
 
 void regist_fsd(uint64_t addr);
+
+int chdir(const char *dirname);
+int getcwd(char *cwd_buf);

@@ -10,6 +10,8 @@ enum
     SYS_CLOSE,
     SYS_LSEEK,
     SYS_IOCTL,
+    SYS_CHDIR,
+    SYS_GETCWD,
     SYS_GETDENTS,
     SYS_SIGACTION,
     SYS_SIGNAL,

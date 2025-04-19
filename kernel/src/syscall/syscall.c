@@ -272,6 +272,16 @@ uint64_t sys_getdents(uint64_t fd, uint64_t buf, uint64_t size)
     }
 }
 
+uint64_t sys_chdir(const char *dirname)
+{
+    return fsd_chdir(dirname);
+}
+
+uint64_t sys_getcwd(char *cwd)
+{
+    return fsd_getcwd(cwd);
+}
+
 extern void sys_load_module(const char *, char **, char **);
 extern uint64_t sys_execve(const char *, char **, char **);
 
@@ -387,6 +397,12 @@ void syscall_handler(struct pt_regs *regs, struct pt_regs *user_regs)
         break;
     case SYS_IOCTL:
         regs->rax = sys_ioctl(arg1, arg2, arg3);
+        break;
+    case SYS_CHDIR:
+        regs->rax = sys_chdir((const char *)arg1);
+        break;
+    case SYS_GETCWD:
+        regs->rax = sys_getcwd((char *)arg1);
         break;
     case SYS_GETDENTS:
         regs->rax = sys_getdents(arg1, arg2, arg3);

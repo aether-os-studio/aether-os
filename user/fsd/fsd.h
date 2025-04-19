@@ -15,4 +15,5 @@ typedef struct fs
 {
     char name[SCHEME_NAME_MAX];
     fd_t fds[MAX_FD_NUM];
+    vfs_node_t cwd;
 } fs_t;

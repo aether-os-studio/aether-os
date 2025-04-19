@@ -266,7 +266,7 @@ bool vfs_init()
         ((void **)&vfs_empty_callback)[i] = &empty_func;
     }
 
-    rootdir = vfs_node_alloc(NULL, NULL);
+    rootdir = vfs_node_alloc(NULL, "/");
     rootdir->type = file_dir;
     return true;
 }
@@ -278,7 +278,9 @@ int vfs_close(vfs_node_t node)
     if (node->handle == NULL)
         return 0;
     if (node == rootdir)
-        return -EPERM;
+        return 0;
+    if (node->type == file_dir)
+        return 0;
     callbackof(node, close)(node->handle);
     node->handle = NULL;
     return 0;

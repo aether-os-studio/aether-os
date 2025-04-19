@@ -159,4 +159,5 @@ clean:
 .PHONY: distclean
 distclean: clean
 	$(MAKE) -C kernel distclean
+	$(MAKE) -C user clean
 	rm -rf kernel-deps limine ovmf

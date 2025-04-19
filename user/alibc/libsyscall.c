@@ -148,3 +148,13 @@ void regist_fsd(uint64_t addr)
 {
     enter_syscall(SYS_REGIST_FSD, addr, 0, 0, 0, 0, 0);
 }
+
+int chdir(const char *dirname)
+{
+    enter_syscall(SYS_CHDIR, (uint64_t)dirname, 0, 0, 0, 0, 0);
+}
+
+int getcwd(char *cwd)
+{
+    enter_syscall(SYS_GETCWD, (uint64_t)cwd, 0, 0, 0, 0, 0);
+}

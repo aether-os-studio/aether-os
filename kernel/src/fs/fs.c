@@ -140,6 +140,42 @@ uint64_t fsd_readdir(uint64_t fd, uint64_t buf, uint64_t size)
     return wait_command();
 }
 
+uint64_t fsd_chdir(const char *dirname)
+{
+    spin_lock(&fs_op_lock);
+
+    uint64_t name_phys = translate_addr(get_current_page_dir(), (uint64_t)dirname);
+    uint64_t name_virt = USER_SPACE_BUFFER_MAPPING_OFFSET + name_phys;
+    page_map_range_to(fsd_pgdir, name_virt, name_phys, strlen(dirname), USER_PTE_FLAGS);
+    if (name_phys == 0)
+    {
+        return (uint64_t)-EINVAL;
+    }
+    fsd_user_command_addr->a = name_virt;
+    fsd_user_command_addr->d = current_task->task_id;
+    fsd_user_command_addr->cmd = FSD_CHDIR;
+
+    return wait_command();
+}
+
+uint64_t fsd_getcwd(char *cwd)
+{
+    spin_lock(&fs_op_lock);
+
+    uint64_t cwd_phys = translate_addr(get_current_page_dir(), (uint64_t)cwd);
+    uint64_t cwd_virt = USER_SPACE_BUFFER_MAPPING_OFFSET + cwd_phys;
+    page_map_range_to(fsd_pgdir, cwd_virt, cwd_phys, CWD_MAX_LEN, USER_PTE_FLAGS);
+    if (cwd_virt == 0)
+    {
+        return (uint64_t)-EINVAL;
+    }
+    fsd_user_command_addr->a = cwd_virt;
+    fsd_user_command_addr->d = current_task->task_id;
+    fsd_user_command_addr->cmd = FSD_GETCWD;
+
+    return wait_command();
+}
+
 uint64_t fsd_close(uint64_t fd)
 {
     spin_lock(&fs_op_lock);

@@ -33,19 +33,19 @@ typedef decltype(nullptr) nullptr_t;
 
 #undef NULL
 #ifndef __cplusplus
-#  define NULL ((void *)0)
+#define NULL ((void *)0)
 #else
-#  define NULL 0
+#define NULL 0
 #endif
 
 #undef offsetof
 #define offsetof(s, m) __builtin_offsetof(s, m)
 
 #if defined(__STDC_VERSION__) && __STDC_VERSION__ > 201710L
-#  undef unreachable
-#  define unreachable() __builtin_unreachable()
+#undef unreachable
+#define unreachable() __builtin_unreachable()
 
-#  define __STDC_VERSION_STDDEF_H__ 202311L
+#define __STDC_VERSION_STDDEF_H__ 202311L
 #endif
 
 #endif

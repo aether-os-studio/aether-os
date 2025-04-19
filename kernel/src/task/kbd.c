@@ -113,11 +113,11 @@ uint8_t get_keyboard_input()
 
         if (x == 0x48)
             temp = (uint8_t)-1;
-        if (x == 0x50)
+        else if (x == 0x50)
             temp = (uint8_t)-2;
-        if (x == 0x4b)
+        else if (x == 0x4b)
             temp = (uint8_t)-3;
-        if (x == 0x4d)
+        else if (x == 0x4d)
             temp = (uint8_t)-4;
         else
         {

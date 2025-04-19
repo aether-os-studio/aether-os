@@ -124,7 +124,58 @@ uint64_t fsd_readdir(uint64_t pid, uint64_t fd, uint64_t buf, uint64_t size)
     return len;
 }
 
-uint64_t fsd_close(uint64_t pid, uint64_t fd)
+uint64_t fsd_chdir(uint64_t pid, const char *dirname)
+{
+    fs_t *fs = &pid_to_fs[pid];
+    char buf[256];
+    if (fs->cwd)
+    {
+        char *cwd = vfs_get_fullpath(fs->cwd);
+        if (!strcmp(cwd, "/"))
+        {
+            sprintf(buf, "/%s", dirname);
+        }
+        else
+        {
+            sprintf(buf, "%s/%s", cwd, dirname);
+        }
+        free(cwd);
+        vfs_close(fs->cwd);
+    }
+    else
+    {
+        sprintf(buf, "%s", dirname);
+    }
+    vfs_node_t node = vfs_open(buf);
+    if (!node)
+    {
+        return (uint64_t)-ENOENT;
+    }
+    if (node->type != file_dir)
+    {
+        vfs_close(node);
+        return (uint64_t)-ENOTDIR;
+    }
+    fs->cwd = node;
+
+    return 0;
+}
+
+uint64_t fsd_getcwd(uint64_t pid, char *cwd)
+{
+    fs_t *fs = &pid_to_fs[pid];
+    if (fs->cwd == NULL)
+    {
+        return (uint64_t)-ENOENT;
+    }
+    char *now_cwd = vfs_get_fullpath(fs->cwd);
+    strncpy(cwd, now_cwd, 255);
+    free(now_cwd);
+    return 0;
+}
+
+uint64_t
+fsd_close(uint64_t pid, uint64_t fd)
 {
     fs_t *fs = &pid_to_fs[pid];
     if (fd >= MAX_FD_NUM)
@@ -212,6 +263,12 @@ uint64_t fsd_daemon(daemon_t *daemon)
                 break;
             case FSD_READDIR:
                 result = fsd_readdir(fsd_command.d, fsd_command.a, fsd_command.b, fsd_command.c);
+                break;
+            case FSD_CHDIR:
+                result = fsd_chdir(fsd_command.d, (const char *)fsd_command.a);
+                break;
+            case FSD_GETCWD:
+                result = fsd_getcwd(fsd_command.d, (char *)fsd_command.a);
                 break;
             case FSD_CLOSE:
                 result = fsd_close(fsd_command.d, fsd_command.a);
