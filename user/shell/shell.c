@@ -241,7 +241,7 @@ static int shell_exec(char *path, const char *command)
             {
                 printf("cd: %s: Not a directory\n", argv[1]);
             }
-            else if (retcode == -ENOENT)
+            else if (retcode < 0)
             {
                 printf("cd: %s: No such directory\n", argv[1]);
             }

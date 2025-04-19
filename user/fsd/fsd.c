@@ -181,8 +181,7 @@ uint64_t fsd_getcwd(uint64_t pid, char *cwd)
     return 0;
 }
 
-uint64_t
-fsd_close(uint64_t pid, uint64_t fd)
+uint64_t fsd_close(uint64_t pid, uint64_t fd)
 {
     fs_t *fs = &pid_to_fs[pid];
     if (fd >= MAX_FD_NUM)

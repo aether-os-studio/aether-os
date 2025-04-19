@@ -3,7 +3,7 @@
 #include <acpi/acpi.h>
 #include <irq/irq.h>
 
-#define KB_BUF_SIZE 128
+#define KB_BUF_SIZE 64
 
 struct keyboard_buf
 {

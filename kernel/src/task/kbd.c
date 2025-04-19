@@ -90,16 +90,17 @@ void parse_scan_code(uint8_t x)
         kb_fifo.ctrl = 0;
     }
 
-    if (kb_fifo.p_head == kb_fifo.buf + KB_BUF_SIZE)
-    {
-        kb_fifo.p_head = kb_fifo.buf;
-    }
-
     if (x < 0x80)
     {
         *kb_fifo.p_head = x;
         kb_fifo.count++;
         kb_fifo.p_head++;
+    }
+
+    if (kb_fifo.p_head >= kb_fifo.buf + KB_BUF_SIZE)
+    {
+        memset(kb_fifo.buf, 0, KB_BUF_SIZE - 1);
+        kb_fifo.p_head = kb_fifo.buf;
     }
 }
 
@@ -128,12 +129,12 @@ uint8_t get_keyboard_input()
             }
         }
 
-        if (kb_fifo.p_tail == kb_fifo.buf + KB_BUF_SIZE)
+        kb_fifo.p_tail++;
+
+        if (kb_fifo.p_tail >= kb_fifo.buf + KB_BUF_SIZE)
         {
             kb_fifo.p_tail = kb_fifo.buf;
         }
-
-        kb_fifo.p_tail++;
 
         return temp;
     }
