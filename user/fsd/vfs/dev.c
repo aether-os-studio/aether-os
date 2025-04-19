@@ -45,6 +45,7 @@ void dev_init()
     devfs_id = vfs_regist("devfs", &callbacks);
 
     devfs_root = vfs_node_alloc(rootdir, "dev");
+    devfs_root->type = file_dir;
 
     for (uint64_t i = 0; i < partition_num; i++)
     {
