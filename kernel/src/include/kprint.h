@@ -2,14 +2,14 @@
 
 #include "printk.h"
 
-#define ksuccess(...)                          \
-    do                                         \
-    {                                          \
-        printk("[ ");                          \
-        printk_color(GREEN, BLACK, "SUCCESS"); \
-        printk(" ] ");                         \
-        printk(__VA_ARGS__);                   \
-        printk("\n");                          \
+#define ksuccess(...)        \
+    do                       \
+    {                        \
+        printk("[ ");        \
+        printk("SUCCESS");   \
+        printk(" ] ");       \
+        printk(__VA_ARGS__); \
+        printk("\n");        \
     } while (0);
 
 #define kinfo(...)           \
@@ -28,42 +28,42 @@
         printk("\n");         \
     } while (0);
 
-#define kwarn(...)                           \
-    do                                       \
-    {                                        \
-        printk("[ ");                        \
-        printk_color(YELLOW, BLACK, "WARN"); \
-        printk(" ] ");                       \
-        printk(__VA_ARGS__);                 \
-        printk("\n");                        \
+#define kwarn(...)           \
+    do                       \
+    {                        \
+        printk("[ ");        \
+        printk("WARN");      \
+        printk(" ] ");       \
+        printk(__VA_ARGS__); \
+        printk("\n");        \
     } while (0);
 
-#define kerror(...)                        \
-    do                                     \
-    {                                      \
-        printk("[ ");                      \
-        printk_color(RED, BLACK, "ERROR"); \
-        printk(" ] ");                     \
-        printk(__VA_ARGS__);               \
-        printk("\n");                      \
+#define kerror(...)          \
+    do                       \
+    {                        \
+        printk("[ ");        \
+        printk("ERROR");     \
+        printk(" ] ");       \
+        printk(__VA_ARGS__); \
+        printk("\n");        \
     } while (0);
 
-#define kterminated(...)                        \
-    do                                          \
-    {                                           \
-        printk("[ ");                           \
-        printk_color(RED, BLACK, "TERMINATED"); \
-        printk(" ] ");                          \
-        printk(__VA_ARGS__);                    \
-        printk("\n");                           \
+#define kterminated(...)      \
+    do                        \
+    {                         \
+        printk("[ ");         \
+        printk("TERMINATED"); \
+        printk(" ] ");        \
+        printk(__VA_ARGS__);  \
+        printk("\n");         \
     } while (0);
 
-#define kBUG(...)                        \
-    do                                   \
-    {                                    \
-        printk("[ ");                    \
-        printk_color(RED, BLACK, "BUG"); \
-        printk(" ] ");                   \
-        printk(__VA_ARGS__);             \
-        printk("\n");                    \
+#define kBUG(...)            \
+    do                       \
+    {                        \
+        printk("[ ");        \
+        printk("BUG");       \
+        printk(" ] ");       \
+        printk(__VA_ARGS__); \
+        printk("\n");        \
     } while (0);

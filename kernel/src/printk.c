@@ -1,19 +1,11 @@
 #include <kprint.h>
 #include <klibc.h>
+#include <lib/flanterm/backends/fb.h>
+#include <lib/flanterm/flanterm.h>
 
-struct screen_info pos;
+char buf[4096];
 
-char buf[4096]; // vsprintf()的缓冲区
-
-int calculate_max_charNum(int len, int size)
-{
-    /**
-     * @brief 计算屏幕上能有多少行
-     * @param len 屏幕长/宽
-     * @param size 字符长/宽
-     */
-    return len / size - 1;
-}
+struct flanterm_context *ft_ctx = NULL;
 
 // The Limine requests can be placed anywhere, but it is important that
 // the compiler does not optimise them away, so, usually, they should
@@ -28,34 +20,23 @@ int printk_init(const int char_size_x, const int char_size_y)
 {
     struct limine_framebuffer *framebuffer = framebuffer_request.response->framebuffers[0];
 
-    pos.width = framebuffer->width;
-    pos.height = framebuffer->height;
+    ft_ctx = flanterm_fb_init(
+        NULL,
+        NULL,
+        (uint32_t *)framebuffer->address, framebuffer->width, framebuffer->height, framebuffer->pitch,
+        framebuffer->red_mask_size, framebuffer->red_mask_shift,
+        framebuffer->green_mask_size, framebuffer->green_mask_shift,
+        framebuffer->blue_mask_size, framebuffer->blue_mask_shift,
+        NULL,
+        NULL, NULL,
+        NULL, NULL,
+        NULL, NULL,
+        NULL, 0, 0, 1,
+        0, 0,
+        0);
 
-    pos.char_size_x = char_size_x;
-    pos.char_size_y = char_size_y;
-    pos.max_x = calculate_max_charNum(pos.width, char_size_x);
-    pos.max_y = calculate_max_charNum(pos.height, char_size_y);
+    kdebug("width=%d\theight=%d", framebuffer->width, framebuffer->height);
 
-    pos.FB_address = (uint32_t *)framebuffer->address;
-    pos.FB_length = pos.width * pos.height;
-
-    pos.x = 0;
-    pos.y = 0;
-
-    spin_init(&pos.lock);
-
-    kdebug("width=%d\theight=%d", pos.width, pos.height);
-
-    return 0;
-}
-
-int set_printk_pos(const int x, const int y)
-{
-    // 指定的坐标不在屏幕范围内
-    if (!((x >= 0 && x <= pos.max_x) && (y >= 0 && y <= pos.max_y)))
-        return EPOS_OVERFLOW;
-    pos.x = x;
-    pos.y = y;
     return 0;
 }
 
@@ -72,20 +53,6 @@ int skip_and_atoi(const char **s)
         ++(*s);
     }
     return ans;
-}
-
-void auto_newline()
-{
-    if (pos.x > pos.max_x)
-    {
-        pos.x = 0;
-        pos.y++;
-    }
-    if (pos.y > pos.max_y)
-    {
-        pos.y = pos.max_y;
-        scroll(true, pos.char_size_y, false);
-    }
 }
 
 static int vsprintf(char *buf, const char *fmt, va_list args)
@@ -569,233 +536,14 @@ static char *write_float_point_num(char *str, double num, int field_width, int p
     return str;
 }
 
-static void putchar(uint32_t *fb, int Xsize, int x, int y, unsigned int FRcolor, unsigned int BKcolor, unsigned char font)
+int printk(const char *fmt, ...)
 {
-    /**
-     * @brief 在屏幕上指定位置打印字符
-     *
-     * @param fb 帧缓存线性地址
-     * @param Xsize 行分辨率
-     * @param x 左上角列像素点位置
-     * @param y 左上角行像素点位置
-     * @param FRcolor 字体颜色
-     * @param BKcolor 背景颜色
-     * @param font 字符的bitmap
-     */
-
-    unsigned char *font_ptr = font_ascii[font];
-    unsigned int *addr;
-
-    int testbit; // 用来测试某位是背景还是字体本身
-
-    for (int i = 0; i < pos.char_size_y; ++i)
-    {
-        // 计算出帧缓冲区的地址
-        addr = fb + Xsize * (y + i) + x;
-        testbit = (1 << (pos.char_size_x + 1));
-        for (int j = 0; j < pos.char_size_x; ++j)
-        {
-            // 从左往右逐个测试相应位
-            testbit >>= 1;
-            if (*font_ptr & testbit)
-                *addr = FRcolor; // 字，显示前景色
-            else
-                *addr = BKcolor; // 背景色
-
-            ++addr;
-        }
-        ++font_ptr;
-    }
-}
-
-int printk_color(unsigned int FRcolor, unsigned int BKcolor, const char *fmt, ...)
-{
-    /**
-     * @brief 格式化打印字符串
-     *
-     * @param FRcolor 前景色
-     * @param BKcolor 背景色
-     * @param ... 格式化字符串
-     */
-
     va_list args;
     va_start(args, fmt);
 
     int len = vsprintf(buf, fmt, args);
 
     va_end(args);
-    unsigned char current;
 
-    cli();
-    spin_lock(&pos.lock);
-
-    int i; // 总共输出的字符数
-    for (i = 0; i < len; ++i)
-    {
-        current = *(buf + i);
-        // 输出换行
-        if (current == '\n')
-        {
-            pos.x = 0;
-            pos.y++;
-            auto_newline();
-        }
-        else if (current == '\t') // 输出制表符
-        {
-            int space_to_print = 8 - pos.x % 8;
-
-            while (space_to_print--)
-            {
-                putchar(pos.FB_address, pos.width, pos.x * pos.char_size_x, pos.y * pos.char_size_y, FRcolor, BKcolor, ' ');
-                pos.x++;
-
-                auto_newline();
-            }
-        }
-        else if (current == '\b') // 退格
-        {
-            pos.x--;
-            if (pos.x < 0)
-            {
-                --pos.y;
-                if (pos.y <= 0)
-                    pos.x = pos.y = 0;
-                else
-                    pos.x = pos.max_x;
-            }
-
-            putchar(pos.FB_address, pos.width, pos.x * pos.char_size_x, pos.y * pos.char_size_y, FRcolor, BKcolor, ' ');
-
-            auto_newline();
-        }
-        else
-        {
-            putchar(pos.FB_address, pos.width, pos.x * pos.char_size_x, pos.y * pos.char_size_y, FRcolor, BKcolor, current);
-            ++pos.x;
-            auto_newline();
-        }
-    }
-
-    spin_unlock(&pos.lock);
-    sti();
-
-    return i;
-}
-
-int do_scroll(bool direction, int pixels)
-{
-    if (direction == true) // 向上滚动
-    {
-        if (pixels > pos.height)
-            return EPOS_OVERFLOW;
-        // 无需滚动
-        if (pixels == 0)
-            return 0;
-        unsigned int src = pixels * pos.width;
-        unsigned int count = pos.FB_length - src;
-
-        memcpy(pos.FB_address, (pos.FB_address + src), sizeof(uint32_t) * (pos.FB_length - src));
-        memset(pos.FB_address + (pos.FB_length - src), 0, sizeof(uint32_t) * src);
-
-        return 0;
-    }
-    else
-        return EUNSUPPORTED;
-    return 0;
-}
-/**
- * @brief 滚动窗口（尚不支持向下滚动）
- *
- * @param direction  方向，向上滑动为true,否则为false
- * @param pixels 要滑动的像素数量
- * @param animation 是否包含滑动动画
- */
-
-int scroll(bool direction, int pixels, bool animation)
-{
-    // 暂时不支持反方向滚动
-    if (direction == false)
-        return EUNSUPPORTED;
-    // 为了保证打印字符正确，需要对pixel按照字体高度对齐
-    int md = pixels % pos.char_size_y;
-    if (md)
-        pixels = pixels + pos.char_size_y - md;
-
-    if (animation == false)
-        return do_scroll(direction, pixels);
-    else
-    {
-
-        int steps;
-        if (pixels > 10)
-            steps = 5;
-        else
-            steps = pixels % 5;
-        int half_steps = steps / 2;
-
-        // 计算加速度
-        double accelerate = 0.5 * pixels / (half_steps * half_steps);
-        int current_pixels = 0;
-        double delta_x;
-
-        int trace[13] = {0};
-        int js_trace = 0;
-        // 加速阶段
-        for (int i = 1; i <= half_steps; ++i)
-        {
-            trace[js_trace] = (int)(accelerate * i + 0.5);
-            current_pixels += trace[js_trace];
-            do_scroll(direction, trace[js_trace]);
-
-            ++js_trace;
-        }
-
-        // 强制使得位置位于1/2*pixels
-        if (current_pixels < pixels / 2)
-        {
-            delta_x = pixels / 2 - current_pixels;
-            current_pixels += delta_x;
-            do_scroll(direction, delta_x);
-        }
-
-        // 减速阶段，是加速阶段的重放
-        for (int i = js_trace - 1; i >= 0; --i)
-        {
-            current_pixels += trace[i];
-            do_scroll(direction, trace[i]);
-        }
-
-        if (current_pixels > pixels)
-            kerror("During scrolling: scrolled pixels over bound!");
-
-        // 强制使得位置位于pixels
-        if (current_pixels < pixels)
-        {
-            delta_x = pixels - current_pixels;
-            current_pixels += delta_x;
-            do_scroll(direction, delta_x);
-        }
-    }
-
-    return 0;
-}
-
-/**
- * @brief 清屏
- *
- */
-int cls()
-{
-    memset(pos.FB_address, BLACK, pos.FB_length * sizeof(unsigned int));
-    pos.x = 0;
-    pos.y = 0;
-    return 0;
-}
-
-/**
- * @brief 获取VBE帧缓冲区长度
- */
-uint64_t get_VBE_FB_length()
-{
-    return pos.FB_length;
+    flanterm_write(ft_ctx, buf, len);
 }

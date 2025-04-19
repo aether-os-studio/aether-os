@@ -62,7 +62,7 @@ void do_divide_error(struct pt_regs *regs, uint64_t error_code)
 void do_debug(struct pt_regs *regs, uint64_t error_code)
 {
     printk("[ ");
-    printk_color(RED, BLACK, "ERROR / TRAP");
+    printk("ERROR / TRAP");
     printk(" ] do_debug(1),\tError Code:%#18lx,\tRSP:%#18lx,\tRIP:%#18lx\n", error_code, regs->rsp, regs->rip);
 
     dump_regs(regs);
@@ -75,7 +75,7 @@ void do_debug(struct pt_regs *regs, uint64_t error_code)
 void do_nmi(struct pt_regs *regs, uint64_t error_code)
 {
     printk("[ ");
-    printk_color(BLUE, BLACK, "INT");
+    printk("INT");
     printk(" ] do_nmi(2),\tError Code:%#18lx,\tRSP:%#18lx,\tRIP:%#18lx\n", error_code, regs->rsp, regs->rip);
 
     dump_regs(regs);
@@ -88,7 +88,7 @@ void do_nmi(struct pt_regs *regs, uint64_t error_code)
 void do_int3(struct pt_regs *regs, uint64_t error_code)
 {
     printk("[ ");
-    printk_color(YELLOW, BLACK, "TRAP");
+    printk("TRAP");
     printk(" ] do_int3(3),\tError Code:%#18lx,\tRSP:%#18lx,\tRIP:%#18lx\n", error_code, regs->rsp, regs->rip);
 
     dump_regs(regs);
@@ -100,7 +100,7 @@ void do_int3(struct pt_regs *regs, uint64_t error_code)
 void do_overflow(struct pt_regs *regs, uint64_t error_code)
 {
     printk("[ ");
-    printk_color(YELLOW, BLACK, "TRAP");
+    printk("TRAP");
     printk(" ] do_overflow(4),\tError Code:%#18lx,\tRSP:%#18lx,\tRIP:%#18lx\n", error_code, regs->rsp, regs->rip);
 
     dump_regs(regs);
@@ -146,7 +146,7 @@ void do_dev_not_avaliable(struct pt_regs *regs, uint64_t error_code)
 void do_double_fault(struct pt_regs *regs, uint64_t error_code)
 {
     printk("[ ");
-    printk_color(RED, BLACK, "Terminate");
+    printk("Terminate");
     printk(" ] do_double_fault(8),\tError Code:%#18lx,\tRSP:%#18lx,\tRIP:%#18lx\n", error_code, regs->rsp, regs->rip);
 
     dump_regs(regs);
@@ -170,10 +170,10 @@ void do_coprocessor_segment_overrun(struct pt_regs *regs, uint64_t error_code)
 void do_invalid_TSS(struct pt_regs *regs, uint64_t error_code)
 {
     printk("[");
-    printk_color(RED, BLACK, "ERROR");
+    printk("ERROR");
     printk("] do_invalid_TSS(10),\tError Code:%#18lx,\tRSP:%#18lx,\tRIP:%#18lx\n", error_code, regs->rsp, regs->rip);
 
-    printk_color(YELLOW, BLACK, "Information:\n");
+    printk("Information:\n");
     // 解析错误码
     if (error_code & 0x01)
         printk("The exception occurred during delivery of an event external to the program.\n");
@@ -225,20 +225,20 @@ void do_general_protection(struct pt_regs *regs, uint64_t error_code)
 {
     kerror("do_general_protection(13),\tError Code:%#18lx,\tRSP:%#18lx,\tRIP:%#18lx\n", error_code, regs->rsp, regs->rip);
     if (error_code & 0x01)
-        printk_color(RED, BLACK, "The exception occurred during delivery of an event external to the program,such as an interrupt or an earlier exception.\n");
+        printk("The exception occurred during delivery of an event external to the program,such as an interrupt or an earlier exception.\n");
 
     if (error_code & 0x02)
-        printk_color(RED, BLACK, "Refers to a gate descriptor in the IDT;\n");
+        printk("Refers to a gate descriptor in the IDT;\n");
     else
-        printk_color(RED, BLACK, "Refers to a descriptor in the GDT or the current LDT;\n");
+        printk("Refers to a descriptor in the GDT or the current LDT;\n");
 
     if ((error_code & 0x02) == 0)
         if (error_code & 0x04)
-            printk_color(RED, BLACK, "Refers to a segment or gate descriptor in the LDT;\n");
+            printk("Refers to a segment or gate descriptor in the LDT;\n");
         else
-            printk_color(RED, BLACK, "Refers to a descriptor in the current GDT;\n");
+            printk("Refers to a descriptor in the current GDT;\n");
 
-    printk_color(RED, BLACK, "Segment Selector Index:%#010x\n", error_code & 0xfff8);
+    printk("Segment Selector Index:%#010x\n", error_code & 0xfff8);
 
     dump_regs(regs);
 
@@ -257,7 +257,7 @@ void do_page_fault(struct pt_regs *regs, uint64_t error_code)
 
     kerror("do_page_fault(14),\tError Code:%#18lx,\tRSP:%#18lx,\tRIP:%#18lx\tCR2:%#18lx\n", error_code, regs->rsp, regs->rip, cr2);
 
-    printk_color(YELLOW, BLACK, "Information:\n");
+    printk("Information:\n");
     if (!(error_code & 0x01))
         printk("Page does not exist.\n");
 

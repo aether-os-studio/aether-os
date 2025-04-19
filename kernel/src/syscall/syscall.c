@@ -178,17 +178,15 @@ uint64_t sys_read(uint64_t fd, uint64_t buf, uint64_t len)
     }
 }
 
+extern int sys_printk(const char *str, uint64_t len);
+
 uint64_t sys_write(uint64_t fd, uint64_t buf, uint64_t len)
 {
     if (fd < MAX_FD_NUM)
     {
-        if (fd == 1)
+        if (fd == 1 || fd == 2)
         {
-            printk("%s", (char *)buf);
-        }
-        else if (fd == 2)
-        {
-            printk_color(RED, BLACK, "%s", (char *)buf);
+            return printk((const char *)buf);
         }
 
         scheme_t *scheme = current_task->schemes[fd];
