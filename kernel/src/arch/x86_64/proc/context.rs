@@ -1,9 +1,13 @@
 use alloc::boxed::Box;
-use rmm::VirtualAddress;
+use rmm::{PhysicalAddress, VirtualAddress};
+use x86_64::{
+    VirtAddr,
+    registers::segmentation::{FS, Segment64},
+};
 
 use crate::{
     arch::{gdt::Selectors, rmm::PageMapper},
-    memory::frame::TheFrameAllocator,
+    memory::{KERNEL_PAGE_TABLE, frame::TheFrameAllocator},
     proc::ArchContext,
 };
 
@@ -98,6 +102,18 @@ pub struct ContextRegs {
 
 impl ArchContext for ContextRegs {
     fn init(&mut self, entry: usize, stack: usize) {
+        let new_page_table =
+            unsafe { PageMapper::create(rmm::TableKind::User, TheFrameAllocator) }.unwrap();
+
+        for i in 256..512 {
+            unsafe {
+                if let Some(entry) = KERNEL_PAGE_TABLE.lock().table().entry(i) {
+                    new_page_table.table().set_entry(i, entry);
+                }
+            }
+        }
+
+        self.cr3 = new_page_table.table().phys().data();
         self.regs.rip = entry;
         self.regs.rsp = stack;
         self.regs.rbp = stack;
@@ -137,5 +153,13 @@ impl ArchContext for ContextRegs {
     fn set_address(&mut self, addr: VirtualAddress) {
         let context = unsafe { *(addr.data() as *const ContextArch) };
         self.regs = context;
+    }
+
+    fn page_table_address(&self) -> PhysicalAddress {
+        PhysicalAddress::new(self.cr3)
+    }
+
+    fn make_current(&self) {
+        unsafe { FS::write_base(VirtAddr::new(self.fsbase as u64)) };
     }
 }

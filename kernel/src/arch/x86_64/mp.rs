@@ -66,12 +66,16 @@ impl Cpus {
 unsafe extern "C" fn ap_entry(cpu: &Cpu) -> ! {
     serial_println!("APU {} starting...", cpu.id);
 
+    super::cpu_init();
+
     CPUS.write().get_mut(cpu.lapic_id).init();
     super::interrupts::init();
 
     let timer_initial = CALIBRATED_LAPIC_TIMER_INITIAL.load(Ordering::Relaxed);
     LAPIC.lock().set_timer_initial(timer_initial);
     unsafe { LAPIC.lock().enable() };
+
+    super::syscall::init();
 
     crate::hcf()
 }

@@ -1,13 +1,18 @@
+use core::sync::atomic::{AtomicUsize, Ordering};
+
 use alloc::string::ToString;
 use alloc::sync::{Arc, Weak};
 use alloc::{boxed::Box, string::String};
-use rmm::{Arch, FrameAllocator, FrameCount, VirtualAddress};
+use exec::ProcInitInfo;
+use rmm::{Arch, FrameAllocator, FrameCount, PhysicalAddress, VirtualAddress};
 use sched::SCHEDULER;
 use spin::RwLock;
 
 use crate::arch::CurrentMMArch;
+use crate::syscall::Result;
 use crate::{arch::proc::context::ContextRegs, memory::FRAME_ALLOCATOR};
 
+pub mod exec;
 pub mod sched;
 
 pub trait ArchContext {
@@ -21,19 +26,27 @@ pub trait ArchContext {
     fn address(&self) -> VirtualAddress;
     /// 设置寄存器地址
     fn set_address(&mut self, addr: VirtualAddress);
+    /// 获取页表地址
+    fn page_table_address(&self) -> PhysicalAddress;
+    /// 切换到当前
+    fn make_current(&self);
 }
 
 pub const STACK_SIZE: usize = 32768;
 
 /// 最小调度单位
 pub struct Context {
+    pid: usize,
     arch: Box<dyn ArchContext>,
     name: String,
     kernel_stack: VirtualAddress,
+    init_info: Option<ProcInitInfo>,
 }
 
 unsafe impl Sync for Context {}
 unsafe impl Send for Context {}
+
+static NEXT_PID: AtomicUsize = AtomicUsize::new(0);
 
 impl Context {
     pub fn new(name: String, entry: usize) -> Context {
@@ -52,10 +65,20 @@ impl Context {
         arch.init(entry, kernel_stack.data() + STACK_SIZE);
 
         Context {
+            pid: NEXT_PID.fetch_add(1, Ordering::SeqCst),
             arch,
-            name,
+            name: name.clone(),
             kernel_stack,
+            init_info: None,
         }
+    }
+
+    pub fn do_fork(&self, regs: usize) -> Result<usize> {
+        let mut new = self.clone();
+
+        new.arch.set_address(VirtualAddress::new(regs));
+
+        Ok(new.pid)
     }
 }
 
@@ -74,9 +97,11 @@ impl Clone for Context {
         .expect("Cannot allocate kernel stack");
 
         Context {
+            pid: NEXT_PID.fetch_add(1, Ordering::SeqCst),
             arch,
             name: self.name.clone(),
             kernel_stack,
+            init_info: None,
         }
     }
 }

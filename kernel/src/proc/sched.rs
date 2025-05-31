@@ -1,10 +1,10 @@
 use alloc::{
     collections::{btree_map::BTreeMap, vec_deque::VecDeque},
     sync::Arc,
-    vec::Vec,
 };
 use rmm::VirtualAddress;
 use spin::{Lazy, Mutex, RwLock};
+use x86_64::{PhysAddr, registers::control::Cr3, structures::paging::PhysFrame};
 
 use crate::arch::proc::{arch_get_cpu_id, arch_set_kernel_stack};
 
@@ -40,6 +40,22 @@ impl Scheduler {
         if let Some(next) = self.contexts.pop_front() {
             self.currents.insert(cpu_id, next.clone());
             arch_set_kernel_stack(next.upgrade().unwrap().read().kernel_stack.data());
+            // page table
+            unsafe {
+                Cr3::write(
+                    PhysFrame::containing_address(PhysAddr::new(
+                        next.upgrade()
+                            .unwrap()
+                            .read()
+                            .arch
+                            .page_table_address()
+                            .data() as u64,
+                    )),
+                    Cr3::read().1,
+                )
+            };
+            // switch fs/gs base
+            next.upgrade().unwrap().read().arch.make_current();
             next.upgrade().unwrap().read().arch.address()
         } else {
             return prev_context;
@@ -60,3 +76,13 @@ unsafe impl Send for Scheduler {}
 unsafe impl Sync for Scheduler {}
 
 pub static SCHEDULER: Lazy<Mutex<Scheduler>> = Lazy::new(|| Mutex::new(Scheduler::default()));
+
+pub fn get_current_context() -> SharedContext {
+    SCHEDULER
+        .lock()
+        .currents
+        .get(&arch_get_cpu_id())
+        .unwrap()
+        .upgrade()
+        .unwrap()
+}

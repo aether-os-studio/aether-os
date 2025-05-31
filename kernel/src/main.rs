@@ -15,9 +15,13 @@
 extern crate alloc;
 
 mod arch;
+mod drivers;
+mod errno;
 mod memory;
+mod net;
 mod proc;
 mod serial;
+mod syscall;
 
 use core::arch::asm;
 use core::sync::atomic::AtomicUsize;
@@ -54,6 +58,8 @@ unsafe extern "C" fn kmain() -> ! {
     memory::heap::init();
 
     arch::init();
+
+    drivers::init();
 
     proc::init();
 
