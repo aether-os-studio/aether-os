@@ -13,6 +13,8 @@ $(call USER_VARIABLE,QEMUFLAGS,-m 2G -cpu max -serial stdio -smp 2)
 
 $(call USER_VARIABLE,DEBUG,0)
 
+export ARCH := $(KARCH)
+
 ifeq ($(DEBUG), 1)
 override QEMUFLAGS += -s -S
 endif
@@ -131,12 +133,16 @@ ifeq ($(KARCH),loongarch64)
 	mcopy -i $(IMAGE_NAME).hdd@@1M limine/BOOTLOONGARCH64.EFI ::/EFI/BOOT
 endif
 
+	mcopy -i $(IMAGE_NAME).hdd@@1M user/rootfs-$(KARCH)/* ::/
+
 .PHONY: clean
 clean:
 	$(MAKE) -C kernel clean
+	$(MAKE) -C user clean
 	rm -rf $(IMAGE_NAME).hdd
 
 .PHONY: distclean
 distclean: clean
 	$(MAKE) -C kernel distclean
-	rm -rf limine ovmf
+	$(MAKE) -C user clean
+	rm -rf limine ovmf $(IMAGE_NAME).hdd

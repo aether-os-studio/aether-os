@@ -3,6 +3,7 @@ use x86_64::VirtAddr;
 use super::{apic::LAPIC, mp::CPUS};
 
 pub mod context;
+pub mod syscall;
 
 pub fn arch_get_cpu_id() -> u32 {
     unsafe { LAPIC.lock().id() }

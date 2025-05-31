@@ -9,6 +9,8 @@ use sched::SCHEDULER;
 use spin::RwLock;
 
 use crate::arch::CurrentMMArch;
+use crate::fs::StdioIndexNode;
+use crate::fs::fd::init_file_descriptor_manager_with_stdin_stdout;
 use crate::syscall::Result;
 use crate::{arch::proc::context::ContextRegs, memory::FRAME_ALLOCATOR};
 
@@ -19,7 +21,7 @@ pub trait ArchContext {
     /// 内核线程初始化
     fn init(&mut self, entry: usize, stack: usize);
     /// 前往用户态
-    fn go_to_user(&mut self);
+    fn go_to_user(&mut self, entry: usize, stack: usize);
     /// 复制自己
     fn clone(&self) -> Box<dyn ArchContext>;
     /// 获取地址
@@ -30,6 +32,11 @@ pub trait ArchContext {
     fn page_table_address(&self) -> PhysicalAddress;
     /// 切换到当前
     fn make_current(&self);
+    /// 设置架构信息
+    #[cfg(target_arch = "x86_64")]
+    fn get_fs(&self) -> usize;
+    #[cfg(target_arch = "x86_64")]
+    fn set_fs(&mut self, fsbase: usize);
 }
 
 pub const STACK_SIZE: usize = 32768;
@@ -64,13 +71,21 @@ impl Context {
 
         arch.init(entry, kernel_stack.data() + STACK_SIZE);
 
-        Context {
+        let context = Context {
             pid: NEXT_PID.fetch_add(1, Ordering::SeqCst),
             arch,
             name: name.clone(),
             kernel_stack,
             init_info: None,
-        }
+        };
+
+        init_file_descriptor_manager_with_stdin_stdout(
+            context.get_pid(),
+            StdioIndexNode::new(),
+            StdioIndexNode::new(),
+        );
+
+        context
     }
 
     pub fn do_fork(&self, regs: usize) -> Result<usize> {
@@ -83,6 +98,14 @@ impl Context {
 
     pub fn get_pid(&self) -> usize {
         self.pid
+    }
+
+    pub fn arch(&self) -> &dyn ArchContext {
+        self.arch.as_ref()
+    }
+
+    pub fn arch_mut(&mut self) -> &mut dyn ArchContext {
+        self.arch.as_mut()
     }
 }
 
@@ -100,13 +123,21 @@ impl Clone for Context {
         }
         .expect("Cannot allocate kernel stack");
 
-        Context {
+        let context = Context {
             pid: NEXT_PID.fetch_add(1, Ordering::SeqCst),
             arch,
             name: self.name.clone(),
             kernel_stack,
             init_info: None,
-        }
+        };
+
+        init_file_descriptor_manager_with_stdin_stdout(
+            context.get_pid(),
+            StdioIndexNode::new(),
+            StdioIndexNode::new(),
+        );
+
+        context
     }
 }
 

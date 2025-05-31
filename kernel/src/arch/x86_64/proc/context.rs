@@ -1,13 +1,13 @@
 use alloc::boxed::Box;
-use rmm::{PhysicalAddress, VirtualAddress};
+use rmm::{Arch, FrameAllocator, PhysicalAddress, VirtualAddress};
 use x86_64::{
     VirtAddr,
     registers::segmentation::{FS, Segment64},
 };
 
 use crate::{
-    arch::{gdt::Selectors, rmm::PageMapper},
-    memory::{KERNEL_PAGE_TABLE, frame::TheFrameAllocator},
+    arch::{CurrentMMArch, gdt::Selectors, rmm::PageMapper},
+    memory::{FRAME_ALLOCATOR, KERNEL_PAGE_TABLE, frame::TheFrameAllocator},
     proc::ArchContext,
 };
 
@@ -123,18 +123,52 @@ impl ArchContext for ContextRegs {
         self.regs.rflags = 0x200;
     }
 
-    fn go_to_user(&mut self) {
+    fn go_to_user(&mut self, entry: usize, stack: usize) {
         let (code, data) = Selectors::get_user_segments();
         self.regs.cs = code.0 as usize;
         self.regs.ss = data.0 as usize;
         self.regs.rflags = 0x200246;
+        self.regs.rbp = stack;
+        self.regs.rsp = stack;
+        self.regs.rip = entry;
     }
 
     fn clone(&self) -> Box<dyn ArchContext> {
         let new_regs = self.regs.clone();
 
-        let new_page_table = unsafe { PageMapper::create(rmm::TableKind::User, TheFrameAllocator) }
-            .expect("Failed to create new page table");
+        let mut new_page_table =
+            unsafe { PageMapper::create(rmm::TableKind::User, TheFrameAllocator) }
+                .expect("Failed to create new page table");
+
+        let parent_mapper = unsafe { PageMapper::current(rmm::TableKind::User, TheFrameAllocator) };
+
+        // 拷贝用户空间内存（0x0..0x8000_0000_0000）
+        for virt in (0x0..0x8000_0000_0000).step_by(CurrentMMArch::PAGE_SIZE) {
+            if let Some(parent_entry) = parent_mapper.translate(VirtualAddress::new(virt)) {
+                if let Some(new_phys) = unsafe { FRAME_ALLOCATOR.lock().allocate_one() } {
+                    let parent_data = unsafe {
+                        core::slice::from_raw_parts(
+                            CurrentMMArch::phys_to_virt(parent_entry.0).data() as *const u8,
+                            CurrentMMArch::PAGE_SIZE,
+                        )
+                    };
+                    let new_data = unsafe {
+                        core::slice::from_raw_parts_mut(
+                            CurrentMMArch::phys_to_virt(new_phys).data() as *mut u8,
+                            CurrentMMArch::PAGE_SIZE,
+                        )
+                    };
+                    new_data.copy_from_slice(parent_data);
+
+                    unsafe {
+                        new_page_table
+                            .map_phys(VirtualAddress::new(virt), new_phys, parent_entry.1)
+                            .unwrap()
+                            .ignore();
+                    }
+                }
+            }
+        }
 
         Box::new(ContextRegs {
             cr3: new_page_table.table().phys().data(),
@@ -162,4 +196,16 @@ impl ArchContext for ContextRegs {
     fn make_current(&self) {
         unsafe { FS::write_base(VirtAddr::new(self.fsbase as u64)) };
     }
+
+    fn get_fs(&self) -> usize {
+        self.fsbase
+    }
+
+    fn set_fs(&mut self, fsbase: usize) {
+        self.fsbase = fsbase;
+    }
+}
+
+pub unsafe fn arch_to_user_mode(regs_addr: VirtualAddress) {
+    core::arch::asm!("mov rsp, {}",crate::pop_context!(),"iretq", in(reg) regs_addr.data(), options(nostack, noreturn));
 }

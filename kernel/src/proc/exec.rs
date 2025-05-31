@@ -1,12 +1,19 @@
+use alloc::string::ToString;
 use alloc::{collections::btree_map::BTreeMap, ffi::CString, vec::Vec};
 use rmm::{Arch, PageFlags, PageMapper, VirtualAddress};
 
+use core::ffi::CStr;
 use core::ptr::null;
 
-use crate::arch::CurrentMMArch;
+use crate::arch::proc::context::arch_to_user_mode;
+use crate::arch::{CurrentMMArch, arch_disable_intr};
+use crate::fs::path_walk::get_inode_by_path;
 use crate::{errno::Errno, memory::frame::TheFrameAllocator, syscall::Result};
 
 use super::sched::get_current_context;
+
+pub const USER_STACK_END: usize = 0x0000_7000_0000_0000;
+pub const USER_STACK_SIZE: usize = 0x0000_0000_0100_0000;
 
 #[derive(Debug)]
 pub struct ProcInitInfo {
@@ -133,10 +140,11 @@ pub fn execve_from_buffer(
 
         let page_table_flags = PageFlags::<CurrentMMArch>::new()
             .execute(phdr.is_executable())
-            .write(phdr.is_write());
+            .write(true)
+            .user(true);
 
-        let aligned_vaddr =
-            (vaddr as usize + CurrentMMArch::PAGE_SIZE - 1) & !(CurrentMMArch::PAGE_SIZE - 1);
+        let aligned_vaddr = (vaddr as usize) & !(CurrentMMArch::PAGE_SIZE - 1);
+
         let count = (size as usize + CurrentMMArch::PAGE_SIZE - 1) / CurrentMMArch::PAGE_SIZE;
 
         for i in 0..count {
@@ -153,22 +161,108 @@ pub fn execve_from_buffer(
             }
         }
 
-        // todo: load interpreter
+        unsafe {
+            core::intrinsics::copy_nonoverlapping(
+                (buffer.as_ptr() as usize + offset as usize) as *const u8,
+                vaddr as *mut u8,
+                size as usize,
+            );
+        }
 
-        unsafe { core::slice::from_raw_parts_mut(vaddr as *mut u8, size as usize) }
-            .copy_from_slice(unsafe {
-                core::slice::from_raw_parts(
-                    (buffer.as_ptr() as u64 + offset) as *const u8,
-                    size as usize,
+        if memsize > size {
+            unsafe {
+                core::slice::from_raw_parts_mut(
+                    (vaddr as usize + size as usize) as *mut u8,
+                    memsize as usize - size as usize,
                 )
-            });
+            }
+            .fill(0);
+        }
+    }
+
+    // todo: load interpreter
+
+    let count =
+        (USER_STACK_SIZE as usize + CurrentMMArch::PAGE_SIZE - 1) / CurrentMMArch::PAGE_SIZE;
+
+    for i in 0..count {
+        let result = unsafe {
+            mapper.map(
+                VirtualAddress::new(
+                    (USER_STACK_END - USER_STACK_SIZE) as usize + i * CurrentMMArch::PAGE_SIZE,
+                ),
+                PageFlags::new().write(true).user(true),
+            )
+        };
+        if let Some(flusher) = result {
+            flusher.flush();
+        } else {
+            return Err(Errno::ENOMEM);
+        }
     }
 
     let mut proc_init_info = ProcInitInfo::new(&get_current_context().read().name);
     proc_init_info.args = args;
     proc_init_info.envs = envs;
 
-    get_current_context().write().init_info = Some(proc_init_info);
+    if let Ok((stack, _)) = unsafe { proc_init_info.push_at(USER_STACK_END) } {
+        get_current_context().write().init_info = Some(proc_init_info);
+        get_current_context()
+            .write()
+            .arch
+            .go_to_user(elf_header.entry as usize, stack);
 
-    Ok(())
+        let stack_point = get_current_context().read().arch.address();
+        unsafe { arch_to_user_mode(stack_point) };
+
+        return Ok(());
+    }
+
+    Err(Errno::ENOMEM)
+}
+
+pub const EHDR_START: usize = 0x0000_1000_0000_0000;
+
+pub fn sys_execve(
+    path: *const core::ffi::c_char,
+    argv: *const *mut core::ffi::c_char,
+    envp: *const *mut core::ffi::c_char,
+) -> Result<()> {
+    arch_disable_intr();
+
+    let path = unsafe { CStr::from_ptr(path) };
+
+    let node = get_inode_by_path(path.to_str().or(Err(Errno::EINVAL))?.to_string())
+        .ok_or(Errno::ENOENT)?;
+
+    let buffer_start = EHDR_START;
+    let size = node.read().get_info().size;
+
+    let aligned_vaddr =
+        (buffer_start as usize + CurrentMMArch::PAGE_SIZE - 1) & !(CurrentMMArch::PAGE_SIZE - 1);
+    let count = (size as usize + CurrentMMArch::PAGE_SIZE - 1) / CurrentMMArch::PAGE_SIZE;
+
+    let mut mapper = unsafe { PageMapper::current(rmm::TableKind::User, TheFrameAllocator) };
+
+    for i in 0..count {
+        let result = unsafe {
+            mapper.map(
+                VirtualAddress::new(aligned_vaddr as usize + i * CurrentMMArch::PAGE_SIZE),
+                PageFlags::<CurrentMMArch>::new().write(true),
+            )
+        };
+        if let Some(flusher) = result {
+            flusher.flush();
+        }
+    }
+
+    node.read().read_at(0, unsafe {
+        core::slice::from_raw_parts_mut(buffer_start as *mut u8, size)
+    })?;
+
+    let buffer = unsafe {
+        core::slice::from_raw_parts(buffer_start as *const u8, node.read().get_info().size)
+    };
+
+    execve_from_buffer(buffer, argv, envp)
 }

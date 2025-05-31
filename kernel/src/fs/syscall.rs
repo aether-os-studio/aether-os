@@ -4,7 +4,10 @@ use alloc::string::ToString;
 
 use crate::{errno::Errno, syscall::Result};
 
-use super::{fd::get_file_descriptor_manager, path_walk::get_inode_by_path};
+use super::{
+    fd::{OpenMode, get_file_descriptor_manager},
+    path_walk::{get_inode_by_path, ref_to_mut},
+};
 
 pub fn sys_open(
     path: *const core::ffi::c_char,
@@ -30,4 +33,49 @@ pub fn sys_open(
         current_file_descriptor_manager.add_inode(inode, super::fd::OpenMode::ReadWrite); // TODO: mode
 
     Ok(file_descriptor)
+}
+
+pub fn sys_close(fd: core::ffi::c_int) -> Result<usize> {
+    let current_file_descriptor_manager = get_file_descriptor_manager().ok_or(Errno::ENOENT)?;
+
+    ref_to_mut(current_file_descriptor_manager.as_ref())
+        .file_descriptors
+        .remove(&(fd as usize))
+        .ok_or(Errno::EBADF)?;
+
+    Ok(0)
+}
+
+pub fn sys_read(fd: usize, buf: &mut [u8]) -> Result<usize> {
+    let current_file_descriptor_manager = get_file_descriptor_manager();
+    if let None = current_file_descriptor_manager {
+        return Err(Errno::ENOENT);
+    }
+    let current_file_descriptor_manager = current_file_descriptor_manager.unwrap();
+
+    if let Some((inode, _, offset)) = current_file_descriptor_manager.file_descriptors.get(&fd) {
+        inode.read().read_at(*offset, buf).or(Err(Errno::EBADF))
+    } else {
+        Err(Errno::ENOENT)
+    }
+}
+
+pub fn sys_write(fd: usize, buf: &[u8]) -> Result<usize> {
+    if let Some(current_file_descriptor_manager) = get_file_descriptor_manager() {
+        if let Some((inode, mode, offset)) =
+            current_file_descriptor_manager.file_descriptors.get(&fd)
+        {
+            match mode {
+                OpenMode::Write | OpenMode::ReadWrite => {
+                    inode.read().write_at(*offset, buf).or(Err(Errno::EBADF))
+                }
+
+                _ => Err(Errno::EPERM),
+            }
+        } else {
+            Err(Errno::ENOENT)
+        }
+    } else {
+        Err(Errno::ENOENT)
+    }
 }

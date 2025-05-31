@@ -15,6 +15,9 @@
 
 extern crate alloc;
 
+#[macro_use]
+extern crate log;
+
 mod arch;
 mod drivers;
 mod errno;
@@ -28,9 +31,11 @@ mod syscall;
 use core::arch::asm;
 use core::sync::atomic::AtomicUsize;
 
+use alloc::ffi::CString;
 use arch::arch_enable_intr;
 use limine::BaseRevision;
 use limine::request::{RequestsEndMarker, RequestsStartMarker};
+use proc::exec::sys_execve;
 
 /// Sets the base revision to the latest revision supported by the crate.
 /// See specification for further info.
@@ -72,6 +77,17 @@ fn init() -> ! {
     serial_println!("init thread is running");
 
     fs::init();
+
+    info!("Ready to run /bin/init");
+
+    sys_execve(
+        CString::new("/bin/init").unwrap().as_ptr(),
+        core::ptr::null(),
+        core::ptr::null(),
+    )
+    .expect("Failed to execute /bin/init");
+
+    error!("Failed to run /bin/init");
 
     hcf()
 }

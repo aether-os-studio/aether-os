@@ -24,7 +24,7 @@ type FileDescriptor = usize;
 type FileTuple = (IndexNodeRef, OpenMode, usize);
 
 pub struct FileDescriptorManager {
-    file_descriptors: BTreeMap<FileDescriptor, FileTuple>,
+    pub file_descriptors: BTreeMap<FileDescriptor, FileTuple>,
     file_descriptor_allocator: AtomicUsize,
     cwd: Mutex<IndexNodeRef>,
 }

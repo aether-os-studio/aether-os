@@ -5,7 +5,9 @@ use x86_64::registers::rflags::RFlags;
 
 use crate::arch::gdt::Selectors;
 
+use super::nr::SYS_ARCH_PRCTL;
 use super::proc::context::ContextArch;
+use super::proc::syscall::sys_arch_prctl;
 
 pub fn init() {
     SFMask::write(RFlags::INTERRUPT_FLAG);
@@ -33,11 +35,16 @@ fn syscall_handler(ptr: *mut ContextArch) -> *mut ContextArch {
     let idx = regs.rax;
     let args = (regs.rdi, regs.rsi, regs.rdx, regs.r10, regs.r8, regs.r9);
 
-    let res = crate::syscall::handle_syscall(idx, args, ptr as usize);
-    if let Ok(res) = res {
-        regs.rax = res;
-    } else {
-        regs.rax = res.expect_err("OOM").to_posix_errno() as usize;
+    match idx {
+        SYS_ARCH_PRCTL => regs.rax = sys_arch_prctl(args.0, args.1),
+        _ => {
+            let res = crate::syscall::handle_syscall(idx, args, ptr as usize);
+            if let Ok(res) = res {
+                regs.rax = res;
+            } else {
+                regs.rax = res.expect_err("OOM").to_posix_errno() as usize;
+            }
+        }
     }
 
     return ptr;
