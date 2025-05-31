@@ -1,3 +1,5 @@
+use core::sync::atomic::AtomicU32;
+
 use acpi::InterruptModel;
 use rmm::{Arch, PageFlags, PhysicalAddress};
 use spin::{Lazy, Mutex, MutexGuard};
@@ -115,7 +117,9 @@ unsafe fn ioapic_add_entry(irq: InterruptIndex, vector: InterruptIndex) {
 
 pub const TIMER_FREQUENCY_HZ: u32 = 250;
 
-unsafe fn calibrate_timer() {
+pub static CALIBRATED_LAPIC_TIMER_INITIAL: AtomicU32 = AtomicU32::new(0);
+
+pub unsafe fn calibrate_timer() {
     let mut lapic = LAPIC.0.lock();
 
     let mut lapic_total_ticks = 0;
@@ -133,7 +137,9 @@ unsafe fn calibrate_timer() {
     serial_println!("Calibrated clock per ms: {}", average_clock_per_ms);
 
     lapic.set_timer_mode(TimerMode::Periodic);
-    lapic.set_timer_initial(average_clock_per_ms * 1000 / TIMER_FREQUENCY_HZ);
+    let initial = average_clock_per_ms * 1000 / TIMER_FREQUENCY_HZ;
+    lapic.set_timer_initial(initial);
+    CALIBRATED_LAPIC_TIMER_INITIAL.store(initial, core::sync::atomic::Ordering::SeqCst);
 }
 
 fn init_apic() {
@@ -151,4 +157,6 @@ pub fn end_of_interrupt() {
 pub fn init() {
     init_apic();
     init_ioapic();
+    unsafe { calibrate_timer() };
+    unsafe { LAPIC.lock().enable() };
 }

@@ -2,11 +2,13 @@
 #![no_main]
 #![allow(dead_code)]
 #![allow(internal_features)]
+#![allow(stable_features)]
 #![allow(unsafe_op_in_unsafe_fn)]
 #![allow(unused_variables)]
 #![allow(static_mut_refs)]
 #![feature(abi_x86_interrupt)]
 #![feature(allocator_api)]
+#![feature(naked_functions)]
 #![feature(core_intrinsics)]
 #![feature(sync_unsafe_cell)]
 
@@ -18,7 +20,9 @@ mod proc;
 mod serial;
 
 use core::arch::asm;
+use core::sync::atomic::AtomicUsize;
 
+use arch::arch_enable_intr;
 use limine::BaseRevision;
 use limine::request::{RequestsEndMarker, RequestsStartMarker};
 
@@ -38,6 +42,8 @@ static _START_MARKER: RequestsStartMarker = RequestsStartMarker::new();
 #[unsafe(link_section = ".requests_end_marker")]
 static _END_MARKER: RequestsEndMarker = RequestsEndMarker::new();
 
+pub static CPU_COUNT: AtomicUsize = AtomicUsize::new(0);
+
 #[unsafe(no_mangle)]
 unsafe extern "C" fn kmain() -> ! {
     // All limine requests must also be referenced in a called function, otherwise they may be
@@ -49,7 +55,17 @@ unsafe extern "C" fn kmain() -> ! {
 
     arch::init();
 
+    proc::init();
+
     hcf();
+}
+
+fn init() -> ! {
+    serial_println!("init thread is running");
+
+    loop {
+        hcf()
+    }
 }
 
 #[panic_handler]
@@ -60,9 +76,10 @@ fn rust_panic(info: &core::panic::PanicInfo) -> ! {
 
 fn hcf() -> ! {
     loop {
+        arch_enable_intr();
         unsafe {
             #[cfg(target_arch = "x86_64")]
-            asm!("hlt");
+            asm!("pause");
             #[cfg(any(target_arch = "aarch64", target_arch = "riscv64"))]
             asm!("wfi");
             #[cfg(target_arch = "loongarch64")]

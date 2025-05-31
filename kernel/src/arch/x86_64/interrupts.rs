@@ -1,3 +1,4 @@
+use rmm::VirtualAddress;
 use spin::Lazy;
 use x86_64::{
     registers::control::Cr2,
@@ -5,7 +6,7 @@ use x86_64::{
     structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode},
 };
 
-use crate::serial_println;
+use crate::{proc::sched::SCHEDULER, serial_println};
 
 use super::gdt::DOUBLE_FAULT_IST_INDEX;
 
@@ -23,6 +24,7 @@ pub static IDT: Lazy<InterruptDescriptorTable> = Lazy::new(|| {
     let mut idt = InterruptDescriptorTable::new();
 
     set_general_handler!(&mut idt, x64_do_irq);
+
     idt.breakpoint.set_handler_fn(breakpoint);
     idt.segment_not_present.set_handler_fn(segment_not_present);
     idt.invalid_opcode.set_handler_fn(invalid_opcode);
@@ -37,15 +39,33 @@ pub static IDT: Lazy<InterruptDescriptorTable> = Lazy::new(|| {
     unsafe {
         idt.double_fault
             .set_handler_fn(double_fault)
-            .set_stack_index(DOUBLE_FAULT_IST_INDEX);
+            .set_stack_index(DOUBLE_FAULT_IST_INDEX as u16);
     }
 
     return idt;
 });
 
-fn x64_do_irq(frame: InterruptStackFrame, index: u8, error_code: Option<u64>) {}
+fn x64_do_irq(frame: InterruptStackFrame, index: u8, error_code: Option<u64>) {
+    serial_println!("Unhandled IRQ {}", index);
+}
 
-extern "x86-interrupt" fn timer_interrupt(_frame: InterruptStackFrame) {}
+#[unsafe(naked)]
+extern "x86-interrupt" fn timer_interrupt(_frame: InterruptStackFrame) {
+    fn timer_handler(context: VirtualAddress) -> VirtualAddress {
+        super::apic::end_of_interrupt();
+        SCHEDULER.lock().schedule(context)
+    }
+
+    core::arch::naked_asm!(
+        crate::push_context!(),
+        "mov rdi, rsp",
+        "call {timer_handler}",
+        "mov rsp, rax",
+        crate::pop_context!(),
+        "iretq",
+        timer_handler = sym timer_handler,
+    );
+}
 
 extern "x86-interrupt" fn lapic_error(_frame: InterruptStackFrame) {
     serial_println!("Local APIC error!");

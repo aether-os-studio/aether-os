@@ -3,17 +3,20 @@ pub mod apic;
 pub mod gdt;
 pub mod hpet;
 pub mod interrupts;
+pub mod mp;
 pub mod proc;
 pub mod rmm;
 
 pub use ::rmm::X8664Arch as CurrentMMArch;
+use mp::{BSP_LAPIC_ID, CPUS};
 
 pub fn init() {
     acpi::init();
-    gdt::init();
+    CPUS.write().get_mut(*BSP_LAPIC_ID).init();
     interrupts::init();
     hpet::init();
     apic::init();
+    CPUS.write().init_ap();
 }
 
 pub fn arch_enable_intr() {
