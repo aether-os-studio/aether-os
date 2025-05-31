@@ -1,12 +1,21 @@
 #![no_std]
 #![no_main]
+#![allow(dead_code)]
 #![allow(internal_features)]
 #![allow(unsafe_op_in_unsafe_fn)]
+#![allow(unused_variables)]
+#![allow(static_mut_refs)]
+#![feature(abi_x86_interrupt)]
+#![feature(allocator_api)]
 #![feature(core_intrinsics)]
 #![feature(sync_unsafe_cell)]
 
+extern crate alloc;
+
 mod arch;
 mod memory;
+mod proc;
+mod serial;
 
 use core::arch::asm;
 
@@ -38,11 +47,14 @@ unsafe extern "C" fn kmain() -> ! {
     memory::init();
     memory::heap::init();
 
+    arch::init();
+
     hcf();
 }
 
 #[panic_handler]
-fn rust_panic(_info: &core::panic::PanicInfo) -> ! {
+fn rust_panic(info: &core::panic::PanicInfo) -> ! {
+    serial_println!("{}", info);
     hcf()
 }
 

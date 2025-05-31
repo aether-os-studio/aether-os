@@ -4,9 +4,19 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+acpi = "5.2.0"
 bit_field = "0.10.2"
 bitflags = "2.9.1"
 limine = "0.4"
 linked_list_allocator = "0.10.5"
 rmm = { path = "crates/rmm", default-features = false }
 spin = "0.10.0"
+
+[dependencies.conquer-once]
+version = "0.4.0"
+default-features = false
+
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+uart_16550 = "0.3.2"
+x2apic = { path = "crates/x2apic" }
+x86_64 = "0.15.2"

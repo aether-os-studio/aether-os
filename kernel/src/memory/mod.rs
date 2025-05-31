@@ -1,10 +1,11 @@
 use core::cell::SyncUnsafeCell;
 
+use frame::TheFrameAllocator;
 use limine::{memory_map::EntryType, request::MemoryMapRequest};
 use rmm::{BuddyAllocator, BumpAllocator, MemoryArea, PhysicalAddress};
 use spin::{Lazy, Mutex};
 
-use crate::arch::CurrentMMArch;
+use crate::arch::{CurrentMMArch, rmm::PageMapper};
 
 #[used]
 #[unsafe(link_section = ".requests")]
@@ -46,6 +47,10 @@ pub static FRAME_ALLOCATOR: Lazy<Mutex<BuddyAllocator<CurrentMMArch>>> = Lazy::n
     let buddy_allocator = unsafe { BuddyAllocator::new(bump_allocator) }.unwrap();
 
     Mutex::new(buddy_allocator)
+});
+
+pub static KERNEL_PAGE_TABLE: Lazy<Mutex<PageMapper>> = Lazy::new(|| {
+    Mutex::new(unsafe { PageMapper::current(rmm::TableKind::Kernel, TheFrameAllocator) })
 });
 
 pub fn init() {
