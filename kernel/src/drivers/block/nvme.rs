@@ -40,6 +40,7 @@ impl Allocator for NvmeAllocator {
             .unwrap()
             .0
             .data()
+            + (addr & CurrentMMArch::PAGE_OFFSET_MASK)
     }
 }
 
@@ -110,8 +111,8 @@ pub static NVME: Lazy<NvmeManager> = Lazy::new(|| {
 });
 
 impl BlockDeviceBase for NvmeBlockDevice {
-    fn read(&mut self, id: usize, lba: usize, count: usize, addr: VirtualAddress) -> usize {
-        if let Some(qpair) = self.qpairs.get_mut(&(id as u16)) {
+    fn read(&mut self, lba: usize, count: usize, addr: VirtualAddress) -> usize {
+        if let Some(qpair) = self.qpairs.get_mut(&1) {
             let bytes = self.namespace.block_size() as usize * count;
             qpair
                 .lock()
@@ -124,8 +125,8 @@ impl BlockDeviceBase for NvmeBlockDevice {
         0
     }
 
-    fn write(&mut self, id: usize, lba: usize, count: usize, addr: VirtualAddress) -> usize {
-        if let Some(qpair) = self.qpairs.get_mut(&(id as u16)) {
+    fn write(&mut self, lba: usize, count: usize, addr: VirtualAddress) -> usize {
+        if let Some(qpair) = self.qpairs.get_mut(&1) {
             let bytes = self.namespace.block_size() as usize * count;
             qpair
                 .lock()

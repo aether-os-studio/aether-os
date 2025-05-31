@@ -41,9 +41,7 @@ impl<'a> PciAccess<'a> {
             .physical_address(segment, bus, device, function)
             .expect("Invalid PCI address");
 
-        let phys_base =
-            PhysicalAddress::new((physical_address as usize) & !CurrentMMArch::PAGE_OFFSET_MASK);
-
+        let phys_base = PhysicalAddress::new(physical_address as usize);
         let virt_base = unsafe { CurrentMMArch::phys_to_virt(phys_base) };
 
         unsafe {
@@ -58,13 +56,7 @@ impl<'a> PciAccess<'a> {
             }
         };
 
-        let virt = unsafe {
-            CurrentMMArch::phys_to_virt(PhysicalAddress::new(
-                physical_address as usize + offset as usize,
-            ))
-        };
-
-        virt
+        virt_base.add(offset as usize)
     }
 }
 

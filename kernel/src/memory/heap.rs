@@ -1,4 +1,4 @@
-use linked_list_allocator::LockedHeap;
+use good_memory_allocator::SpinLockedAllocator;
 use rmm::{Arch, PageFlags, VirtualAddress};
 
 use crate::arch::CurrentMMArch;
@@ -9,7 +9,7 @@ pub const KERNEL_HEAP_START: usize = 0xffff_c000_0000_0000;
 pub const KERNEL_HEAP_SIZE: usize = 32 * 1024 * 1024;
 
 #[global_allocator]
-pub static KERNEL_ALLOCATOR: LockedHeap = LockedHeap::empty();
+pub static KERNEL_ALLOCATOR: SpinLockedAllocator = SpinLockedAllocator::empty();
 
 pub fn init() {
     unsafe {
@@ -24,8 +24,6 @@ pub fn init() {
                 .flush();
         }
 
-        KERNEL_ALLOCATOR
-            .lock()
-            .init(KERNEL_HEAP_START as *mut u8, KERNEL_HEAP_SIZE);
+        KERNEL_ALLOCATOR.init(KERNEL_HEAP_START, KERNEL_HEAP_SIZE);
     };
 }

@@ -4,4 +4,5 @@ pub mod pci;
 
 pub fn init() {
     pci::init();
+    block::init();
 }
