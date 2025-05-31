@@ -4,6 +4,7 @@
 #![allow(internal_features)]
 #![allow(stable_features)]
 #![allow(unsafe_op_in_unsafe_fn)]
+#![allow(unused_assignments)]
 #![allow(unused_variables)]
 #![allow(static_mut_refs)]
 #![feature(abi_x86_interrupt)]
@@ -17,6 +18,7 @@ extern crate alloc;
 mod arch;
 mod drivers;
 mod errno;
+mod fs;
 mod memory;
 mod net;
 mod proc;
@@ -69,9 +71,9 @@ unsafe extern "C" fn kmain() -> ! {
 fn init() -> ! {
     serial_println!("init thread is running");
 
-    loop {
-        hcf()
-    }
+    fs::init();
+
+    hcf()
 }
 
 #[panic_handler]

@@ -80,6 +80,10 @@ impl Context {
 
         Ok(new.pid)
     }
+
+    pub fn get_pid(&self) -> usize {
+        self.pid
+    }
 }
 
 impl Clone for Context {

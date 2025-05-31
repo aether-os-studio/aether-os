@@ -6,7 +6,7 @@ use gpt_disk_io::{
 use rmm::VirtualAddress;
 use spin::Mutex;
 
-use crate::drivers::base::block::BlockDeviceBase;
+use crate::{drivers::base::block::BlockDeviceBase, errno::Errno};
 
 use super::{block::BLOCK_DEVICES, cache::CachedBlockDevice};
 
@@ -45,10 +45,33 @@ impl BlockIo for CachedBlockDevice {
     }
 }
 
+#[derive(Clone)]
 pub struct PartitionDevice {
     device_id: usize,
     start_bytes: usize,
     total_bytes: usize,
+}
+
+impl PartitionDevice {
+    pub fn read_at(&self, offset: usize, buf: &mut [u8]) -> Result<usize, Errno> {
+        let mut cached_block_device = CachedBlockDevice::new(self.device_id);
+        let len = cached_block_device.read(
+            offset + self.start_bytes,
+            buf.len(),
+            VirtualAddress::new(buf.as_mut_ptr() as usize),
+        );
+        Ok(len)
+    }
+
+    pub fn write_at(&self, offset: usize, buf: &[u8]) -> Result<usize, Errno> {
+        let mut cached_block_device = CachedBlockDevice::new(self.device_id);
+        let len = cached_block_device.read(
+            offset + self.start_bytes,
+            buf.len(),
+            VirtualAddress::new(buf.as_ptr() as usize),
+        );
+        Ok(len)
+    }
 }
 
 pub static PARTITION_DEVICES: Mutex<Vec<PartitionDevice>> = Mutex::new(Vec::new());

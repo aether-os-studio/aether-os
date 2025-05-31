@@ -104,7 +104,11 @@ limine/limine:
 kernel:
 	$(MAKE) -C kernel
 
-$(IMAGE_NAME).hdd: limine/limine kernel
+.PHONY: user
+user:
+	$(MAKE) -C user
+
+$(IMAGE_NAME).hdd: limine/limine kernel user
 	rm -f $(IMAGE_NAME).hdd
 	dd if=/dev/zero bs=1M count=0 seek=64 of=$(IMAGE_NAME).hdd
 	sgdisk $(IMAGE_NAME).hdd -n 1:2048 -t 1:ef00
