@@ -25,5 +25,6 @@ pub fn _print(args: fmt::Arguments) {
 pub static TERMINAL: Lazy<Mutex<Terminal<Display>>> = Lazy::new(|| {
     let mut terminal = Terminal::new(Display::default());
     terminal.set_font_manager(Box::new(BitmapFont));
+    terminal.set_crnl_mapping(true);
     Mutex::new(terminal)
 });

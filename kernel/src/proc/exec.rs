@@ -1,15 +1,18 @@
 use alloc::string::ToString;
 use alloc::{collections::btree_map::BTreeMap, ffi::CString, vec::Vec};
+use goblin::elf::ProgramHeader;
 use rmm::{Arch, PageFlags, PageMapper, VirtualAddress};
 
 use core::ffi::CStr;
 use core::ptr::null;
+use core::usize;
 
 use crate::arch::proc::context::arch_to_user_mode;
 use crate::arch::{CurrentMMArch, arch_disable_intr};
 use crate::fs::path_walk::get_inode_by_path;
 use crate::{errno::Errno, memory::frame::TheFrameAllocator, syscall::Result};
 
+use super::abi::AtType;
 use super::sched::get_current_context;
 
 pub const USER_STACK_END: usize = 0x0000_7000_0000_0000;
@@ -34,7 +37,7 @@ impl ProcInitInfo {
     }
 
     pub unsafe fn push_at(&self, mut ustack: usize) -> Result<(usize, usize)> {
-        self.push_str(ustack, &self.proc_name)?;
+        ustack = self.push_str(ustack, &self.proc_name)?;
 
         let envps = self
             .envs
@@ -53,17 +56,14 @@ impl ProcInitInfo {
             })
             .collect::<Vec<_>>();
 
-        // 压入auxv
         ustack = self.push_slice(ustack, &[null::<u8>(), null::<u8>()])?;
         for (&k, &v) in self.auxv.iter() {
             ustack = self.push_slice(ustack, &[k as usize, v])?;
         }
 
-        // 把环境变量指针压入栈中
         ustack = self.push_slice(ustack, &[null::<u8>()])?;
         ustack = self.push_slice(ustack, envps.as_slice())?;
 
-        // 把参数指针压入栈中
         ustack = self.push_slice(ustack, &[null::<u8>()])?;
         ustack = self.push_slice(ustack, argps.as_slice())?;
 
@@ -86,9 +86,9 @@ impl ProcInitInfo {
         return Ok(sp);
     }
 
-    fn push_str(&self, ustack: usize, s: &CString) -> Result<usize> {
+    fn push_str(&self, mut ustack: usize, s: &CString) -> Result<usize> {
         let bytes = s.as_bytes_with_nul();
-        let ustack = self.push_slice(ustack, bytes)?;
+        ustack = self.push_slice(ustack, bytes)?;
         return Ok(ustack);
     }
 }
@@ -128,6 +128,8 @@ pub fn execve_from_buffer(
 
     let mut mapper = unsafe { PageMapper::current(rmm::TableKind::User, TheFrameAllocator) };
 
+    let mut load_start = usize::MAX;
+
     for phdr in elf_header.program_headers.iter() {
         if phdr.p_type != PT_LOAD {
             continue;
@@ -144,8 +146,11 @@ pub fn execve_from_buffer(
             .user(true);
 
         let aligned_vaddr = (vaddr as usize) & !(CurrentMMArch::PAGE_SIZE - 1);
+        let aligned_end = (vaddr as usize + memsize as usize + CurrentMMArch::PAGE_SIZE - 1)
+            & !(CurrentMMArch::PAGE_OFFSET_MASK);
 
-        let count = (size as usize + CurrentMMArch::PAGE_SIZE - 1) / CurrentMMArch::PAGE_SIZE;
+        let count =
+            (aligned_end - aligned_vaddr + CurrentMMArch::PAGE_SIZE - 1) / CurrentMMArch::PAGE_SIZE;
 
         for i in 0..count {
             let result = unsafe {
@@ -159,6 +164,10 @@ pub fn execve_from_buffer(
             } else {
                 return Err(Errno::ENOMEM);
             }
+        }
+
+        if (vaddr as usize) < load_start {
+            load_start = vaddr as usize;
         }
 
         unsafe {
@@ -204,6 +213,19 @@ pub fn execve_from_buffer(
     let mut proc_init_info = ProcInitInfo::new(&get_current_context().read().name);
     proc_init_info.args = args;
     proc_init_info.envs = envs;
+    proc_init_info
+        .auxv
+        .insert(AtType::Entry as u8, elf_header.entry as usize);
+    proc_init_info.auxv.insert(
+        AtType::Phdr as u8,
+        load_start + elf_header.header.e_phoff as usize,
+    );
+    proc_init_info
+        .auxv
+        .insert(AtType::PhNum as u8, elf_header.program_headers.len());
+    proc_init_info
+        .auxv
+        .insert(AtType::PhEnt as u8, size_of::<ProgramHeader>());
 
     if let Ok((stack, _)) = unsafe { proc_init_info.push_at(USER_STACK_END) } {
         get_current_context().write().init_info = Some(proc_init_info);
@@ -248,7 +270,7 @@ pub fn sys_execve(
         let result = unsafe {
             mapper.map(
                 VirtualAddress::new(aligned_vaddr as usize + i * CurrentMMArch::PAGE_SIZE),
-                PageFlags::<CurrentMMArch>::new().write(true),
+                PageFlags::<CurrentMMArch>::new().write(true).user(true),
             )
         };
         if let Some(flusher) = result {

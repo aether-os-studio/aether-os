@@ -4,8 +4,10 @@ use x86_64::registers::model_specific::{LStar, SFMask, Star};
 use x86_64::registers::rflags::RFlags;
 
 use crate::arch::gdt::Selectors;
+use crate::errno::Errno;
+use crate::fs::syscall::sys_poll;
 
-use super::nr::SYS_ARCH_PRCTL;
+use super::nr::{PollFd, SYS_ARCH_PRCTL, SYS_POLL};
 use super::proc::context::ContextArch;
 use super::proc::syscall::sys_arch_prctl;
 
@@ -29,16 +31,18 @@ pub fn init() {
     }
 }
 
-fn syscall_handler(ptr: *mut ContextArch) -> *mut ContextArch {
-    let regs = &mut unsafe { *ptr };
-
+fn syscall_handler(regs: &mut ContextArch) -> &mut ContextArch {
     let idx = regs.rax;
     let args = (regs.rdi, regs.rsi, regs.rdx, regs.r10, regs.r8, regs.r9);
 
     match idx {
         SYS_ARCH_PRCTL => regs.rax = sys_arch_prctl(args.0, args.1),
+        SYS_POLL => {
+            regs.rax = sys_poll(args.0 as *mut PollFd, args.1, args.2 as isize)
+                .unwrap_or(Errno::EINVAL.to_posix_errno() as usize);
+        }
         _ => {
-            let res = crate::syscall::handle_syscall(idx, args, ptr as usize);
+            let res = crate::syscall::handle_syscall(idx, args, regs as *mut ContextArch as usize);
             if let Ok(res) = res {
                 regs.rax = res;
             } else {
@@ -47,17 +51,19 @@ fn syscall_handler(ptr: *mut ContextArch) -> *mut ContextArch {
         }
     }
 
-    return ptr;
+    return regs;
 }
 
 #[unsafe(naked)]
 unsafe extern "C" fn syscall_exception() {
     core::arch::naked_asm!(
+        "sub rsp, 0x28",
         crate::push_context!(),
         "mov rdi, rsp",
         "call {syscall_handler}",
         "mov rsp, rax",
         crate::pop_context!(),
+        "add rsp, 0x28",
         "sysretq",
         syscall_handler = sym syscall_handler,
     );

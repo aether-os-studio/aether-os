@@ -75,8 +75,8 @@ pub trait IndexNode: Sync + Send + Any {
         Err(Errno::ENOSYS)
     }
 
-    fn poll(&self, event: usize) -> Result<()> {
-        Err(Errno::ENOSYS)
+    fn poll(&self, event: usize) -> Result<usize> {
+        Ok(event)
     }
     fn ioctl(&self, _cmd: usize, _arg: usize) -> Result<usize> {
         Err(Errno::ENOSYS)

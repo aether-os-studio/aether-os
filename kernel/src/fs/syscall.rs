@@ -1,8 +1,12 @@
-use core::ffi::CStr;
+use core::{ffi::CStr, hint::spin_loop};
 
 use alloc::string::ToString;
 
-use crate::{errno::Errno, syscall::Result};
+use crate::{
+    arch::nr::PollFd,
+    errno::Errno,
+    syscall::{Result, slice_from_user_mut},
+};
 
 use super::{
     fd::{OpenMode, get_file_descriptor_manager},
@@ -77,5 +81,45 @@ pub fn sys_write(fd: usize, buf: &[u8]) -> Result<usize> {
         }
     } else {
         Err(Errno::ENOENT)
+    }
+}
+
+pub const POLLIN: usize = 0x001;
+pub const POLLPRI: usize = 0x002;
+pub const POLLOUT: usize = 0x004;
+pub const POLLERR: usize = 0x008;
+pub const POLLHUP: usize = 0x010;
+pub const POLLNVAL: usize = 0x020;
+
+pub fn sys_poll(fds: *mut PollFd, nfds: usize, timeout: isize) -> Result<usize> {
+    let current_fd_manager = super::fd::get_file_descriptor_manager().ok_or(Errno::ENOENT)?;
+    let mut ready = 0;
+
+    if let Some(poll_fds) = slice_from_user_mut(fds, nfds) {
+        loop {
+            for poll_fd in poll_fds.iter_mut() {
+                if let Some((inode, _, _)) = current_fd_manager
+                    .file_descriptors
+                    .get(&(poll_fd.fd as usize))
+                {
+                    match inode.read().poll(poll_fd.events as usize) {
+                        Ok(revents) => {
+                            poll_fd.revents = revents as i16;
+                            ready += 1;
+                        }
+                        Err(_) => poll_fd.revents = POLLERR as i16,
+                    }
+                } else {
+                    poll_fd.revents = POLLNVAL as i16;
+                }
+            }
+            if ready > 0 || timeout == 0 {
+                return Ok(ready);
+            }
+
+            spin_loop();
+        }
+    } else {
+        Err(Errno::EFAULT)
     }
 }

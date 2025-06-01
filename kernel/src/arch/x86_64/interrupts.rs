@@ -115,6 +115,8 @@ extern "x86-interrupt" fn page_fault(frame: InterruptStackFrame, error_code: Pag
             serial_println!("Invalid virtual address: {:?}", error);
         }
     }
+    serial_println!("{:#?}", error_code);
+
     x86_64::instructions::hlt();
 }
 

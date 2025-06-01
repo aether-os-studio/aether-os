@@ -355,3 +355,28 @@ pub const SYS_WAIT4: usize = 61;
 pub const SYS_WAITID: usize = 247;
 pub const SYS_WRITE: usize = 1;
 pub const SYS_WRITEV: usize = 20;
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PollFd {
+    pub fd: i32,
+    pub events: i16,
+    pub revents: i16,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SigAction {
+    pub sa_handler: usize,
+    pub sa_flags: usize,
+    pub sa_restorer: usize,
+    pub sa_mask: u64,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SignalStack {
+    pub sp: usize,
+    pub flags: i32,
+    pub size: usize,
+}

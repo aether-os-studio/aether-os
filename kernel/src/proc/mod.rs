@@ -1,21 +1,28 @@
 use core::sync::atomic::{AtomicUsize, Ordering};
 
+use alloc::collections::btree_map::BTreeMap;
 use alloc::string::ToString;
 use alloc::sync::{Arc, Weak};
+use alloc::vec::Vec;
 use alloc::{boxed::Box, string::String};
 use exec::ProcInitInfo;
-use rmm::{Arch, FrameAllocator, FrameCount, PhysicalAddress, VirtualAddress};
+use rmm::{Arch, FrameAllocator, FrameCount, PageFlags, PhysicalAddress, VirtualAddress};
 use sched::SCHEDULER;
 use spin::RwLock;
 
 use crate::arch::CurrentMMArch;
+use crate::arch::nr::{SigAction, SignalStack};
+use crate::arch::rmm::PageMapper;
 use crate::fs::StdioIndexNode;
 use crate::fs::fd::init_file_descriptor_manager_with_stdin_stdout;
+use crate::memory::frame::TheFrameAllocator;
 use crate::syscall::Result;
 use crate::{arch::proc::context::ContextRegs, memory::FRAME_ALLOCATOR};
 
+pub mod abi;
 pub mod exec;
 pub mod sched;
+pub mod signal;
 
 pub trait ArchContext {
     /// 内核线程初始化
@@ -48,7 +55,16 @@ pub struct Context {
     name: String,
     kernel_stack: VirtualAddress,
     init_info: Option<ProcInitInfo>,
+    brk_start: usize,
+    brk_end: usize,
+    actions: BTreeMap<usize, SigAction>,
+    signal: u64,
+    blocked: u64,
+    signal_stack: Option<SignalStack>,
+    pub mapped_regions: Vec<(usize, usize)>,
 }
+
+pub const BRK_START: usize = 0x0000_7000_0000_0000;
 
 unsafe impl Sync for Context {}
 unsafe impl Send for Context {}
@@ -77,6 +93,13 @@ impl Context {
             name: name.clone(),
             kernel_stack,
             init_info: None,
+            brk_start: BRK_START,
+            brk_end: BRK_START,
+            actions: BTreeMap::new(),
+            signal: 0,
+            blocked: 0,
+            signal_stack: None,
+            mapped_regions: Vec::new(),
         };
 
         init_file_descriptor_manager_with_stdin_stdout(
@@ -107,6 +130,66 @@ impl Context {
     pub fn arch_mut(&mut self) -> &mut dyn ArchContext {
         self.arch.as_mut()
     }
+
+    pub fn brk(&mut self, addr: usize) -> Result<usize> {
+        let aligned_addr = (addr + CurrentMMArch::PAGE_SIZE - 1) & !CurrentMMArch::PAGE_OFFSET_MASK;
+
+        if aligned_addr == 0 {
+            return Ok(self.brk_start);
+        } else if aligned_addr < self.brk_end {
+            return Ok(0);
+        }
+
+        let addr = self.brk_end;
+        let size = aligned_addr - self.brk_start;
+
+        let count = (size + CurrentMMArch::PAGE_SIZE - 1) / CurrentMMArch::PAGE_SIZE;
+
+        let mut mapper = unsafe { PageMapper::current(rmm::TableKind::User, TheFrameAllocator) };
+
+        for i in 0..count {
+            if let Some(flusher) = unsafe {
+                mapper.map(
+                    VirtualAddress::new(self.brk_end + i * CurrentMMArch::PAGE_SIZE),
+                    PageFlags::new().write(true).user(true),
+                )
+            } {
+                flusher.flush();
+            }
+        }
+
+        self.brk_end = aligned_addr;
+
+        Ok(self.brk_end)
+    }
+
+    pub fn find_free_area(&mut self, size: usize) -> VirtualAddress {
+        const MMAP_AREA_START: usize = 0x6000_0000_0000;
+        const MMAP_AREA_END: usize = 0x7000_0000_0000;
+
+        let mut candidate = MMAP_AREA_START;
+
+        let mut all_regions = alloc::vec![(self.brk_start, self.brk_end - self.brk_start)];
+        all_regions.extend(&self.mapped_regions);
+        all_regions.sort_by_key(|&(start, _)| start);
+
+        for &(start, len) in &all_regions {
+            let end = start + len;
+            if end > candidate && start < MMAP_AREA_END {
+                candidate = candidate.max(end);
+            }
+        }
+
+        // 确保地址对齐
+        let aligned_addr =
+            (candidate + CurrentMMArch::PAGE_SIZE - 1) & !(CurrentMMArch::PAGE_SIZE - 1);
+
+        if aligned_addr + size > MMAP_AREA_END {
+            panic!("MMAP address space exhausted");
+        }
+
+        VirtualAddress::new(aligned_addr)
+    }
 }
 
 impl Clone for Context {
@@ -129,6 +212,13 @@ impl Clone for Context {
             name: self.name.clone(),
             kernel_stack,
             init_info: None,
+            brk_start: BRK_START,
+            brk_end: BRK_START,
+            actions: BTreeMap::new(),
+            signal: 0,
+            blocked: 0,
+            signal_stack: None,
+            mapped_regions: Vec::new(),
         };
 
         init_file_descriptor_manager_with_stdin_stdout(
