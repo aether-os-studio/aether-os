@@ -129,23 +129,31 @@ pub fn execve_from_buffer(
     let mut mapper = unsafe { PageMapper::current(rmm::TableKind::User, TheFrameAllocator) };
 
     let mut load_start = usize::MAX;
+    let mut load_end = 0;
 
     for phdr in elf_header.program_headers.iter() {
-        if phdr.p_type != PT_LOAD {
-            continue;
-        }
-
         let vaddr = phdr.p_vaddr;
         let offset = phdr.p_offset;
         let size = phdr.p_filesz;
         let memsize = phdr.p_memsz;
 
+        if (vaddr as usize) < load_start {
+            load_start = vaddr as usize;
+        }
+        if (vaddr as usize + memsize as usize) > load_end {
+            load_end = vaddr as usize + memsize as usize;
+        }
+
+        if phdr.p_type != PT_LOAD {
+            continue;
+        }
+
         let page_table_flags = PageFlags::<CurrentMMArch>::new()
-            .execute(phdr.is_executable())
+            .execute(true)
             .write(true)
             .user(true);
 
-        let aligned_vaddr = (vaddr as usize) & !(CurrentMMArch::PAGE_SIZE - 1);
+        let aligned_vaddr = (vaddr as usize) & !CurrentMMArch::PAGE_OFFSET_MASK;
         let aligned_end = (vaddr as usize + memsize as usize + CurrentMMArch::PAGE_SIZE - 1)
             & !(CurrentMMArch::PAGE_OFFSET_MASK);
 
@@ -161,13 +169,7 @@ pub fn execve_from_buffer(
             };
             if let Some(flusher) = result {
                 flusher.flush();
-            } else {
-                return Err(Errno::ENOMEM);
             }
-        }
-
-        if (vaddr as usize) < load_start {
-            load_start = vaddr as usize;
         }
 
         unsafe {
@@ -218,7 +220,7 @@ pub fn execve_from_buffer(
         .insert(AtType::Entry as u8, elf_header.entry as usize);
     proc_init_info.auxv.insert(
         AtType::Phdr as u8,
-        load_start + elf_header.header.e_phoff as usize,
+        EHDR_START + elf_header.header.e_phoff as usize,
     );
     proc_init_info
         .auxv
@@ -226,6 +228,19 @@ pub fn execve_from_buffer(
     proc_init_info
         .auxv
         .insert(AtType::PhEnt as u8, size_of::<ProgramHeader>());
+    proc_init_info
+        .auxv
+        .insert(AtType::PageSize as u8, CurrentMMArch::PAGE_SIZE);
+
+    get_current_context().write().memory_mappings.phdrs = elf_header.program_headers.clone();
+    get_current_context()
+        .write()
+        .memory_mappings
+        .interpreter_load_start = 0;
+    get_current_context()
+        .write()
+        .memory_mappings
+        .interpreter_load_end = 0;
 
     if let Ok((stack, _)) = unsafe { proc_init_info.push_at(USER_STACK_END) } {
         get_current_context().write().init_info = Some(proc_init_info);
@@ -235,6 +250,7 @@ pub fn execve_from_buffer(
             .go_to_user(elf_header.entry as usize, stack);
 
         let stack_point = get_current_context().read().arch.address();
+        unsafe { mapper.make_current() };
         unsafe { arch_to_user_mode(stack_point) };
 
         return Ok(());

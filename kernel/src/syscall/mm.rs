@@ -83,7 +83,10 @@ pub fn sys_mmap(
         unsafe { core::slice::from_raw_parts_mut(virt_addr.data() as *mut u8, size) }.fill(0);
     }
 
-    ctx_lock.mapped_regions.push((virt_addr.data(), size));
+    ctx_lock
+        .memory_mappings
+        .mapped_regions
+        .push((virt_addr.data(), size));
 
     Ok(virt_addr.data())
 }

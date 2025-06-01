@@ -94,7 +94,7 @@ fn init() -> ! {
 
 #[panic_handler]
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
-    serial_println!("{}", info);
+    error!("{}", info);
     hcf()
 }
 

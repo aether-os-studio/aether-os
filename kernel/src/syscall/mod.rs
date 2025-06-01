@@ -11,9 +11,11 @@ use crate::arch::nr::*;
 use crate::fs::syscall::sys_write;
 use crate::fs::syscall::{sys_close, sys_open, sys_read};
 use crate::proc::exec::sys_execve;
+use crate::proc::sched::get_current_context;
 use crate::proc::signal::sys_rt_sigaction;
 use crate::proc::signal::sys_rt_sigprocmask;
 use crate::proc::signal::sys_sigaltstack;
+use crate::proc::syscall::sys_fork;
 
 pub fn check_user_overflows(addr: usize, size: usize) -> bool {
     if let Some(addr) = addr.checked_add(size) {
@@ -49,7 +51,7 @@ pub fn handle_syscall(
     idx: usize,
     args: (usize, usize, usize, usize, usize, usize),
     regs_addr: usize,
-) -> crate::syscall::Result<usize> {
+) -> Result<usize> {
     let mut res = Ok(0);
 
     res = match idx {
@@ -84,8 +86,8 @@ pub fn handle_syscall(
         SYS_SENDMSG => Err(Errno::ENOSYS),
         SYS_RECVMSG => Err(Errno::ENOSYS),
         // Process management
-        SYS_FORK => Err(Errno::ENOSYS),
-        SYS_VFORK => Err(Errno::ENOSYS),
+        SYS_FORK => sys_fork(regs_addr),
+        SYS_VFORK => sys_fork(regs_addr),
         SYS_EXECVE => {
             sys_execve(
                 args.0 as *const core::ffi::c_char,
@@ -108,6 +110,18 @@ pub fn handle_syscall(
         SYS_SIGALTSTACK => {
             sys_sigaltstack(args.0 as *const SignalStack, args.1 as *mut SignalStack)
         }
+        SYS_GETPID => {
+            if args.0 == usize::MAX
+                && args.1 == usize::MAX
+                && args.2 == usize::MAX
+                && args.3 == usize::MAX
+                && args.4 == usize::MAX
+            {
+                return Ok(1);
+            }
+            Ok(get_current_context().read().get_pid())
+        }
+        SYS_GETTID => Ok(get_current_context().read().get_pid()),
         // Memory management
         SYS_BRK => sys_brk(args.0),
         SYS_MMAP => sys_mmap(args.0, args.1, args.2, args.3, args.4, args.5),

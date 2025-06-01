@@ -3,7 +3,7 @@ use fat::Fat32Volume;
 use spin::{Lazy, Mutex, RwLock};
 use vfs::{IndexNode, IndexNodeRef, fake::FakeFS, partition::PartitionIndexNode};
 
-use crate::{drivers::block::partition::PARTITION_DEVICES, println, serial_println};
+use crate::{drivers::block::partition::PARTITION_DEVICES, print, serial_print, serial_println};
 
 pub mod fat;
 pub mod fd;
@@ -24,7 +24,10 @@ impl StdioIndexNode {
 }
 
 impl IndexNode for StdioIndexNode {
-    fn when_mounted(&mut self, path: String, father: Option<IndexNodeRef>) {}
+    fn when_mounted(&mut self, path: String, father: Option<IndexNodeRef>) {
+        self.path.clear();
+        self.path.push_str(path.as_str());
+    }
 
     fn when_umounted(&mut self) {}
 
@@ -41,8 +44,8 @@ impl IndexNode for StdioIndexNode {
 
     fn write_at(&self, _offset: usize, buf: &[u8]) -> crate::syscall::Result<usize> {
         let str = unsafe { str::from_utf8_unchecked(buf) };
-        serial_println!("{}", str);
-        println!("{}", str);
+        serial_print!("{}", str);
+        print!("{}", str);
         Ok(buf.len())
     }
 }

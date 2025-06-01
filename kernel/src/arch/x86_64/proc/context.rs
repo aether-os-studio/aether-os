@@ -1,14 +1,23 @@
 use alloc::boxed::Box;
-use rmm::{Arch, FrameAllocator, PhysicalAddress, VirtualAddress};
+use goblin::elf::program_header::PT_LOAD;
+use rmm::{Arch, PageFlags, PhysicalAddress, VirtualAddress};
 use x86_64::{
-    VirtAddr,
-    registers::segmentation::{FS, Segment64},
+    PhysAddr, VirtAddr,
+    registers::{
+        control::Cr3,
+        segmentation::{FS, Segment64},
+    },
+    structures::paging::PhysFrame,
 };
 
 use crate::{
     arch::{CurrentMMArch, gdt::Selectors, rmm::PageMapper},
-    memory::{FRAME_ALLOCATOR, KERNEL_PAGE_TABLE, frame::TheFrameAllocator},
-    proc::ArchContext,
+    memory::{KERNEL_PAGE_TABLE, frame::TheFrameAllocator},
+    proc::{
+        ArchContext,
+        exec::{USER_STACK_END, USER_STACK_SIZE},
+        sched::get_current_context,
+    },
 };
 
 #[repr(C, packed)]
@@ -93,7 +102,7 @@ macro_rules! pop_context {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ContextRegs {
     cr3: usize,
-    regs: ContextArch,
+    regs: *mut ContextArch,
     fs: usize,
     gs: usize,
     fsbase: usize,
@@ -105,7 +114,7 @@ impl ArchContext for ContextRegs {
         let new_page_table =
             unsafe { PageMapper::create(rmm::TableKind::User, TheFrameAllocator) }.unwrap();
 
-        for i in 256..512 {
+        for i in (CurrentMMArch::PAGE_ENTRIES / 2)..CurrentMMArch::PAGE_ENTRIES {
             unsafe {
                 if let Some(entry) = KERNEL_PAGE_TABLE.lock().table().entry(i) {
                     new_page_table.table().set_entry(i, entry);
@@ -113,80 +122,186 @@ impl ArchContext for ContextRegs {
             }
         }
 
+        self.regs = unsafe { (stack as *mut ContextArch).sub(1) };
+        unsafe { *self.regs = ContextArch::default() };
+
         self.cr3 = new_page_table.table().phys().data();
-        self.regs.rip = entry;
-        self.regs.rsp = stack;
-        self.regs.rbp = stack;
         let (code, data) = Selectors::get_kernel_segments();
-        self.regs.cs = code.0 as usize;
-        self.regs.ss = data.0 as usize;
-        self.regs.rflags = 0x200;
+        unsafe {
+            (*self.regs).rip = entry;
+            (*self.regs).rsp = stack;
+            (*self.regs).rbp = stack;
+            (*self.regs).cs = code.0 as usize;
+            (*self.regs).ss = data.0 as usize;
+            (*self.regs).rflags = 0x200;
+        }
     }
 
     fn go_to_user(&mut self, entry: usize, stack: usize) {
         let (code, data) = Selectors::get_user_segments();
-        self.regs.cs = code.0 as usize;
-        self.regs.ss = data.0 as usize;
-        self.regs.rflags = 0x200246;
-        self.regs.rbp = stack;
-        self.regs.rsp = stack;
-        self.regs.rip = entry;
+        unsafe {
+            (*self.regs).cs = code.0 as usize;
+            (*self.regs).ss = data.0 as usize;
+            (*self.regs).rflags = 0x200;
+            (*self.regs).rbp = stack;
+            (*self.regs).rsp = stack;
+            (*self.regs).rip = entry;
+        }
     }
 
-    fn clone(&self) -> Box<dyn ArchContext> {
-        let new_regs = self.regs.clone();
-
+    fn clone(&self, addr: VirtualAddress, regs_addr: VirtualAddress) -> Box<dyn ArchContext> {
         let mut new_page_table =
             unsafe { PageMapper::create(rmm::TableKind::User, TheFrameAllocator) }
                 .expect("Failed to create new page table");
 
-        let parent_mapper = unsafe { PageMapper::current(rmm::TableKind::User, TheFrameAllocator) };
-
-        // 拷贝用户空间内存（0x0..0x8000_0000_0000）
-        for virt in (0x0..0x8000_0000_0000).step_by(CurrentMMArch::PAGE_SIZE) {
-            if let Some(parent_entry) = parent_mapper.translate(VirtualAddress::new(virt)) {
-                if let Some(new_phys) = unsafe { FRAME_ALLOCATOR.lock().allocate_one() } {
-                    let parent_data = unsafe {
-                        core::slice::from_raw_parts(
-                            CurrentMMArch::phys_to_virt(parent_entry.0).data() as *const u8,
-                            CurrentMMArch::PAGE_SIZE,
-                        )
-                    };
-                    let new_data = unsafe {
-                        core::slice::from_raw_parts_mut(
-                            CurrentMMArch::phys_to_virt(new_phys).data() as *mut u8,
-                            CurrentMMArch::PAGE_SIZE,
-                        )
-                    };
-                    new_data.copy_from_slice(parent_data);
-
-                    unsafe {
-                        new_page_table
-                            .map_phys(VirtualAddress::new(virt), new_phys, parent_entry.1)
-                            .unwrap()
-                            .ignore();
-                    }
+        for i in (CurrentMMArch::PAGE_ENTRIES / 2)..CurrentMMArch::PAGE_ENTRIES {
+            unsafe {
+                if let Some(entry) = KERNEL_PAGE_TABLE.lock().table().entry(i) {
+                    new_page_table.table().set_entry(i, entry);
                 }
             }
         }
 
-        Box::new(ContextRegs {
+        let mut copy_mapping = |src_addr: VirtualAddress,
+                                size: usize,
+                                flags: PageFlags<CurrentMMArch>| {
+            let count = (size + CurrentMMArch::PAGE_SIZE - 1) / CurrentMMArch::PAGE_SIZE;
+
+            let aligned_addr =
+                VirtualAddress::new(src_addr.data() & !CurrentMMArch::PAGE_OFFSET_MASK);
+
+            for i in 0..=count {
+                unsafe {
+                    if let Some(flusher) =
+                        new_page_table.map(aligned_addr.add(i * CurrentMMArch::PAGE_SIZE), flags)
+                    {
+                        flusher.ignore();
+                    }
+                }
+            }
+
+            let mut written: usize = 0;
+
+            while written < size {
+                let current_address = src_addr.data() + written;
+                let page_offset = current_address % CurrentMMArch::PAGE_SIZE;
+                let remaining = size - written;
+                let chunk_size = (CurrentMMArch::PAGE_SIZE - page_offset).min(remaining) as usize;
+
+                let physical_address = new_page_table
+                    .translate(VirtualAddress::new(
+                        current_address & !CurrentMMArch::PAGE_OFFSET_MASK,
+                    ))
+                    .unwrap()
+                    .0
+                    .add(page_offset);
+                let virtual_address = unsafe { CurrentMMArch::phys_to_virt(physical_address) };
+
+                unsafe {
+                    core::intrinsics::copy_nonoverlapping(
+                        (src_addr.data() + written) as *const u8,
+                        virtual_address.data() as *mut u8,
+                        chunk_size,
+                    )
+                };
+
+                written += chunk_size;
+            }
+        };
+
+        for phdr in get_current_context().read().memory_mappings.phdrs.iter() {
+            if phdr.p_type == PT_LOAD {
+                copy_mapping(
+                    VirtualAddress::new(phdr.p_vaddr as usize),
+                    phdr.p_memsz as usize,
+                    PageFlags::new().execute(true).write(true).user(true),
+                );
+            }
+        }
+
+        if get_current_context()
+            .read()
+            .memory_mappings
+            .interpreter_load_start
+            != 0
+        {
+            copy_mapping(
+                VirtualAddress::new(
+                    get_current_context()
+                        .read()
+                        .memory_mappings
+                        .interpreter_load_start,
+                ),
+                get_current_context()
+                    .read()
+                    .memory_mappings
+                    .interpreter_load_end
+                    - get_current_context()
+                        .read()
+                        .memory_mappings
+                        .interpreter_load_start,
+                PageFlags::new().execute(true).write(true).user(true),
+            );
+        }
+
+        copy_mapping(
+            VirtualAddress::new(get_current_context().read().memory_mappings.brk_start),
+            get_current_context().read().memory_mappings.brk_end
+                - get_current_context().read().memory_mappings.brk_start,
+            PageFlags::new().execute(true).write(true).user(true),
+        );
+
+        copy_mapping(
+            VirtualAddress::new(USER_STACK_END - USER_STACK_SIZE),
+            USER_STACK_SIZE,
+            PageFlags::new().write(true).user(true),
+        );
+
+        for region in get_current_context()
+            .read()
+            .memory_mappings
+            .mapped_regions
+            .iter()
+        {
+            copy_mapping(
+                VirtualAddress::new(region.0),
+                region.1,
+                PageFlags::new().write(true).user(true),
+            );
+        }
+
+        let regs = unsafe {
+            let context = (addr.data() as *mut ContextArch).sub(1);
+
+            core::intrinsics::copy_nonoverlapping(
+                regs_addr.data() as *const ContextArch,
+                context,
+                1,
+            );
+
+            context
+        };
+
+        let new_context = ContextRegs {
             cr3: new_page_table.table().phys().data(),
-            regs: new_regs,
+            regs,
             fs: self.fs,
             gs: self.gs,
             fsbase: self.fsbase,
             gsbase: self.gsbase,
-        })
+        };
+
+        unsafe { (*new_context.regs).rax = 0 };
+
+        Box::new(new_context)
     }
 
     fn address(&self) -> VirtualAddress {
-        VirtualAddress::new(&self.regs as *const ContextArch as usize)
+        VirtualAddress::new(self.regs as usize)
     }
 
     fn set_address(&mut self, addr: VirtualAddress) {
-        let context = unsafe { *(addr.data() as *const ContextArch) };
-        self.regs = context;
+        self.regs = addr.data() as *mut ContextArch;
     }
 
     fn page_table_address(&self) -> PhysicalAddress {
@@ -195,6 +310,14 @@ impl ArchContext for ContextRegs {
 
     fn make_current(&self) {
         unsafe { FS::write_base(VirtAddr::new(self.fsbase as u64)) };
+
+        // page table
+        unsafe {
+            Cr3::write(
+                PhysFrame::containing_address(PhysAddr::new(self.cr3 as u64)),
+                Cr3::read().1,
+            )
+        };
     }
 
     fn get_fs(&self) -> usize {
@@ -207,5 +330,5 @@ impl ArchContext for ContextRegs {
 }
 
 pub unsafe fn arch_to_user_mode(regs_addr: VirtualAddress) {
-    core::arch::asm!("mov rsp, {}",crate::pop_context!(),"iretq", in(reg) regs_addr.data(), options(nostack, noreturn));
+    core::arch::asm!("mov rsp, {}", crate::pop_context!(), "iretq", in(reg) regs_addr.data(), options(nostack, noreturn));
 }

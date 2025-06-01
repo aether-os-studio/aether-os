@@ -51,6 +51,10 @@ impl<A: Arch> PageEntry<A> {
         self.data &= !A::ENTRY_FLAGS_MASK;
         self.data |= flags.data();
     }
+    #[inline(always)]
+    pub fn set_address(&mut self, address: PhysicalAddress) {
+        self.data |= address.data() & !A::PAGE_OFFSET_MASK;
+    }
 
     #[inline(always)]
     pub fn present(&self) -> bool {

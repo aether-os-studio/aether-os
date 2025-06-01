@@ -115,7 +115,7 @@ unsafe fn ioapic_add_entry(irq: InterruptIndex, vector: InterruptIndex) {
     ioapic.enable_irq(irq as u8);
 }
 
-pub const TIMER_FREQUENCY_HZ: u32 = 250;
+pub const TIMER_FREQUENCY_HZ: u32 = 500;
 
 pub static CALIBRATED_LAPIC_TIMER_INITIAL: AtomicU32 = AtomicU32::new(0);
 

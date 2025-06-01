@@ -32,6 +32,13 @@ pub fn init() {
 }
 
 fn syscall_handler(regs: &mut ContextArch) -> &mut ContextArch {
+    regs.rip = regs.rcx;
+    regs.rflags = regs.r11;
+    regs.rsp = unsafe { (regs as *mut ContextArch).add(1) } as usize;
+    let (cs, ds) = Selectors::get_user_segments();
+    regs.cs = cs.0 as usize;
+    regs.ss = ds.0 as usize;
+
     let idx = regs.rax;
     let args = (regs.rdi, regs.rsi, regs.rdx, regs.r10, regs.r8, regs.r9);
 

@@ -6,8 +6,9 @@ use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
 use alloc::{boxed::Box, string::String};
 use exec::ProcInitInfo;
+use goblin::elf::ProgramHeaders;
 use rmm::{Arch, FrameAllocator, FrameCount, PageFlags, PhysicalAddress, VirtualAddress};
-use sched::SCHEDULER;
+use sched::CONTEXTS;
 use spin::RwLock;
 
 use crate::arch::CurrentMMArch;
@@ -23,6 +24,7 @@ pub mod abi;
 pub mod exec;
 pub mod sched;
 pub mod signal;
+pub mod syscall;
 
 pub trait ArchContext {
     /// 内核线程初始化
@@ -30,7 +32,7 @@ pub trait ArchContext {
     /// 前往用户态
     fn go_to_user(&mut self, entry: usize, stack: usize);
     /// 复制自己
-    fn clone(&self) -> Box<dyn ArchContext>;
+    fn clone(&self, addr: VirtualAddress, source: VirtualAddress) -> Box<dyn ArchContext>;
     /// 获取地址
     fn address(&self) -> VirtualAddress;
     /// 设置寄存器地址
@@ -48,6 +50,16 @@ pub trait ArchContext {
 
 pub const STACK_SIZE: usize = 32768;
 
+#[derive(Default)]
+pub struct ContextMemoryMappings {
+    pub mapped_regions: Vec<(usize, usize)>,
+    pub phdrs: ProgramHeaders,
+    pub interpreter_load_start: usize,
+    pub interpreter_load_end: usize,
+    pub brk_start: usize,
+    pub brk_end: usize,
+}
+
 /// 最小调度单位
 pub struct Context {
     pid: usize,
@@ -55,13 +67,11 @@ pub struct Context {
     name: String,
     kernel_stack: VirtualAddress,
     init_info: Option<ProcInitInfo>,
-    brk_start: usize,
-    brk_end: usize,
     actions: BTreeMap<usize, SigAction>,
     signal: u64,
     blocked: u64,
     signal_stack: Option<SignalStack>,
-    pub mapped_regions: Vec<(usize, usize)>,
+    pub memory_mappings: ContextMemoryMappings,
 }
 
 pub const BRK_START: usize = 0x0000_7000_0000_0000;
@@ -87,20 +97,21 @@ impl Context {
 
         arch.init(entry, kernel_stack.data() + STACK_SIZE);
 
-        let context = Context {
+        let mut context = Context {
             pid: NEXT_PID.fetch_add(1, Ordering::SeqCst),
             arch,
             name: name.clone(),
-            kernel_stack,
+            kernel_stack: kernel_stack.add(STACK_SIZE),
             init_info: None,
-            brk_start: BRK_START,
-            brk_end: BRK_START,
             actions: BTreeMap::new(),
             signal: 0,
             blocked: 0,
             signal_stack: None,
-            mapped_regions: Vec::new(),
+            memory_mappings: Default::default(),
         };
+
+        context.memory_mappings.brk_start = BRK_START;
+        context.memory_mappings.brk_end = BRK_START;
 
         init_file_descriptor_manager_with_stdin_stdout(
             context.get_pid(),
@@ -112,11 +123,9 @@ impl Context {
     }
 
     pub fn do_fork(&self, regs: usize) -> Result<usize> {
-        let mut new = self.clone();
+        let new = self.full_clone(regs);
 
-        new.arch.set_address(VirtualAddress::new(regs));
-
-        Ok(new.pid)
+        Ok(new.read().pid)
     }
 
     pub fn get_pid(&self) -> usize {
@@ -135,13 +144,13 @@ impl Context {
         let aligned_addr = (addr + CurrentMMArch::PAGE_SIZE - 1) & !CurrentMMArch::PAGE_OFFSET_MASK;
 
         if aligned_addr == 0 {
-            return Ok(self.brk_start);
-        } else if aligned_addr < self.brk_end {
+            return Ok(self.memory_mappings.brk_start);
+        } else if aligned_addr < self.memory_mappings.brk_end {
             return Ok(0);
         }
 
-        let addr = self.brk_end;
-        let size = aligned_addr - self.brk_start;
+        let addr = self.memory_mappings.brk_end;
+        let size = aligned_addr - self.memory_mappings.brk_start;
 
         let count = (size + CurrentMMArch::PAGE_SIZE - 1) / CurrentMMArch::PAGE_SIZE;
 
@@ -150,7 +159,9 @@ impl Context {
         for i in 0..count {
             if let Some(flusher) = unsafe {
                 mapper.map(
-                    VirtualAddress::new(self.brk_end + i * CurrentMMArch::PAGE_SIZE),
+                    VirtualAddress::new(
+                        self.memory_mappings.brk_end + i * CurrentMMArch::PAGE_SIZE,
+                    ),
                     PageFlags::new().write(true).user(true),
                 )
             } {
@@ -158,9 +169,9 @@ impl Context {
             }
         }
 
-        self.brk_end = aligned_addr;
+        self.memory_mappings.brk_end = aligned_addr;
 
-        Ok(self.brk_end)
+        Ok(self.memory_mappings.brk_end)
     }
 
     pub fn find_free_area(&mut self, size: usize) -> VirtualAddress {
@@ -169,8 +180,11 @@ impl Context {
 
         let mut candidate = MMAP_AREA_START;
 
-        let mut all_regions = alloc::vec![(self.brk_start, self.brk_end - self.brk_start)];
-        all_regions.extend(&self.mapped_regions);
+        let mut all_regions = alloc::vec![(
+            self.memory_mappings.brk_start,
+            self.memory_mappings.brk_end - self.memory_mappings.brk_start
+        )];
+        all_regions.extend(&self.memory_mappings.mapped_regions);
         all_regions.sort_by_key(|&(start, _)| start);
 
         for &(start, len) in &all_regions {
@@ -190,12 +204,8 @@ impl Context {
 
         VirtualAddress::new(aligned_addr)
     }
-}
 
-impl Clone for Context {
-    fn clone(&self) -> Self {
-        let arch = self.arch.clone();
-
+    pub fn full_clone(&self, regs_ptr: usize) -> SharedContext {
         let kernel_stack = unsafe {
             FRAME_ALLOCATOR
                 .lock()
@@ -206,26 +216,35 @@ impl Clone for Context {
         }
         .expect("Cannot allocate kernel stack");
 
-        let context = Context {
+        let arch = self
+            .arch
+            .clone(kernel_stack.add(STACK_SIZE), VirtualAddress::new(regs_ptr));
+
+        let mut context = Context {
             pid: NEXT_PID.fetch_add(1, Ordering::SeqCst),
             arch,
             name: self.name.clone(),
-            kernel_stack,
+            kernel_stack: kernel_stack.add(STACK_SIZE),
             init_info: None,
-            brk_start: BRK_START,
-            brk_end: BRK_START,
             actions: BTreeMap::new(),
             signal: 0,
             blocked: 0,
             signal_stack: None,
-            mapped_regions: Vec::new(),
+            memory_mappings: Default::default(),
         };
+
+        context.memory_mappings.brk_start = BRK_START;
+        context.memory_mappings.brk_end = BRK_START;
 
         init_file_descriptor_manager_with_stdin_stdout(
             context.get_pid(),
             StdioIndexNode::new(),
             StdioIndexNode::new(),
         );
+
+        let context = Arc::new(RwLock::new(context));
+
+        CONTEXTS.write().push_back(context.clone());
 
         context
     }
@@ -235,8 +254,12 @@ pub type SharedContext = Arc<RwLock<Context>>;
 pub type WeakSharedContext = Weak<RwLock<Context>>;
 
 pub fn init() {
-    SCHEDULER.lock().add(Arc::new(RwLock::new(Context::new(
-        "init".to_string(),
-        crate::init as usize,
-    ))));
+    CONTEXTS
+        .write()
+        .push_back(Arc::new(RwLock::new(Context::new(
+            "init".to_string(),
+            crate::init as usize,
+        ))));
+
+    sched::init();
 }
