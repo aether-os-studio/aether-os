@@ -17,6 +17,7 @@ os-terminal = "0.6.10"
 pci_types = "0.10.0"
 rmm = { path = "crates/rmm", default-features = false }
 spin = "0.10.0"
+x86_rtc = "0.1.1"
 
 [dependencies.conquer-once]
 version = "0.4.0"
@@ -37,6 +38,7 @@ version = "0.2.19"
 default-features = false
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
+x86_rtc = "0.1.1"
 uart_16550 = "0.3.2"
 x2apic = { path = "crates/x2apic" }
 x86_64 = "0.15.2"

@@ -9,7 +9,7 @@ use crate::arch::proc::{arch_get_cpu_id, arch_set_kernel_stack};
 use super::{STACK_SIZE, SharedContext};
 
 pub struct Scheduler {
-    currents: BTreeMap<u32, SharedContext>,
+    pub currents: BTreeMap<u32, SharedContext>,
 }
 
 impl Default for Scheduler {

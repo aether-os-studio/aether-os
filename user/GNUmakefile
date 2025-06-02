@@ -1,6 +1,7 @@
+export SYSROOT := $(shell pwd)/rootfs-$(ARCH)/usr
+
 all:
-	mkdir -p rootfs-$(ARCH)
-	$(MAKE) -C init
+	mkdir -p $(SYSROOT)
+	bash ports/ports.sh
 
 clean:
-	$(MAKE) -C init clean

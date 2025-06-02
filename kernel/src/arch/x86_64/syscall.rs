@@ -6,8 +6,9 @@ use x86_64::registers::rflags::RFlags;
 use crate::arch::gdt::Selectors;
 use crate::errno::Errno;
 use crate::fs::syscall::sys_poll;
+use crate::time::PosixTimeSpec;
 
-use super::nr::{PollFd, SYS_ARCH_PRCTL, SYS_POLL};
+use super::nr::{PollFd, SYS_ARCH_PRCTL, SYS_CLOCK_GETTIME, SYS_POLL};
 use super::proc::context::ContextArch;
 use super::proc::syscall::sys_arch_prctl;
 
@@ -31,6 +32,12 @@ pub fn init() {
     }
 }
 
+pub fn sys_clock_gettime(which: usize, ptr: *mut PosixTimeSpec) -> usize {
+    unsafe { (*ptr).tv_sec = x86_rtc::Rtc::new().get_unix_timestamp() as i64 };
+    unsafe { (*ptr).tv_nsec = 0 };
+    0
+}
+
 fn syscall_handler(regs: &mut ContextArch) -> &mut ContextArch {
     regs.rip = regs.rcx;
     regs.rflags = regs.r11;
@@ -48,6 +55,7 @@ fn syscall_handler(regs: &mut ContextArch) -> &mut ContextArch {
             regs.rax = sys_poll(args.0 as *mut PollFd, args.1, args.2 as isize)
                 .unwrap_or(Errno::EINVAL.to_posix_errno() as usize);
         }
+        SYS_CLOCK_GETTIME => regs.rax = sys_clock_gettime(args.0, args.1 as *mut PosixTimeSpec),
         _ => {
             let res = crate::syscall::handle_syscall(idx, args, regs as *mut ContextArch as usize);
             if let Ok(res) = res {

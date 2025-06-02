@@ -8,6 +8,7 @@ use crate::{errno::Errno, syscall::Result};
 pub type IndexNodeRef = Arc<RwLock<dyn IndexNode>>;
 
 pub mod fake;
+pub mod iov;
 pub mod partition;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]

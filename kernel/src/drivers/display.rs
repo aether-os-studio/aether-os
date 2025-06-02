@@ -3,7 +3,7 @@ use os_terminal::{DrawTarget, Rgb};
 
 #[used]
 #[unsafe(link_section = ".requests")]
-static FRAMEBUFFER_REQUEST: FramebufferRequest = FramebufferRequest::new();
+pub static FRAMEBUFFER_REQUEST: FramebufferRequest = FramebufferRequest::new();
 
 pub struct Display {
     width: usize,

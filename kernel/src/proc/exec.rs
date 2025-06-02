@@ -38,6 +38,7 @@ impl ProcInitInfo {
 
     pub unsafe fn push_at(&self, mut ustack: usize) -> Result<(usize, usize)> {
         ustack = self.push_str(ustack, &self.proc_name)?;
+        let execfn_ptr = ustack;
 
         let envps = self
             .envs
@@ -60,6 +61,7 @@ impl ProcInitInfo {
         for (&k, &v) in self.auxv.iter() {
             ustack = self.push_slice(ustack, &[k as usize, v])?;
         }
+        ustack = self.push_slice(ustack, &[AtType::EXECFN as usize, execfn_ptr as usize])?;
 
         ustack = self.push_slice(ustack, &[null::<u8>()])?;
         ustack = self.push_slice(ustack, envps.as_slice())?;
@@ -96,6 +98,7 @@ impl ProcInitInfo {
 use goblin::elf::{Elf, program_header::PT_LOAD};
 
 pub fn execve_from_buffer(
+    path: *const core::ffi::c_char,
     buffer: &'static [u8],
     argv: *const *mut core::ffi::c_char,
     envp: *const *mut core::ffi::c_char,
@@ -124,12 +127,17 @@ pub fn execve_from_buffer(
         }
     }
 
+    let mut use_ldso: bool = false;
+    let mut ldso_entry: usize = 0;
+
     let elf_header = Elf::parse(buffer).or(Err(Errno::EINVAL))?;
 
     let mut mapper = unsafe { PageMapper::current(rmm::TableKind::User, TheFrameAllocator) };
 
     let mut load_start = usize::MAX;
     let mut load_end = 0;
+    let mut interpreter_load_start = usize::MAX;
+    let mut interpreter_load_end = 0;
 
     for phdr in elf_header.program_headers.iter() {
         let vaddr = phdr.p_vaddr;
@@ -191,8 +199,101 @@ pub fn execve_from_buffer(
         }
     }
 
-    // todo: load interpreter
+    if let Some(interpreter_name) = elf_header.interpreter {
+        let node = get_inode_by_path(interpreter_name.to_string()).ok_or(Errno::ENOENT)?;
+        let interpreter_buffer = INTERPRETER_EHDR_START as *mut u8;
 
+        let size = node.read().get_info().size;
+
+        let aligned_vaddr = (interpreter_buffer as usize + CurrentMMArch::PAGE_SIZE - 1)
+            & !(CurrentMMArch::PAGE_SIZE - 1);
+        let count = (size as usize + CurrentMMArch::PAGE_SIZE - 1) / CurrentMMArch::PAGE_SIZE;
+
+        for i in 0..count {
+            let result = unsafe {
+                mapper.map(
+                    VirtualAddress::new(aligned_vaddr as usize + i * CurrentMMArch::PAGE_SIZE),
+                    PageFlags::<CurrentMMArch>::new().write(true).user(true),
+                )
+            };
+            if let Some(flusher) = result {
+                flusher.flush();
+            }
+        }
+
+        let interpreter_buffer =
+            unsafe { core::slice::from_raw_parts_mut(interpreter_buffer, size) };
+
+        node.read()
+            .read_at(0, interpreter_buffer)
+            .or(Err(Errno::E2BIG))?;
+
+        let interpreter = Elf::parse(interpreter_buffer).or(Err(Errno::EINVAL))?;
+
+        ldso_entry = INTERPRETER_LOAD_BASE + interpreter.entry as usize;
+
+        for phdr in interpreter.program_headers.iter() {
+            let vaddr = INTERPRETER_LOAD_BASE as u64 + phdr.p_vaddr;
+            let offset = phdr.p_offset;
+            let size = phdr.p_filesz;
+            let memsize = phdr.p_memsz;
+
+            if (vaddr as usize) < interpreter_load_start {
+                interpreter_load_start = vaddr as usize;
+            }
+            if (vaddr as usize + memsize as usize) > interpreter_load_end {
+                interpreter_load_end = vaddr as usize + memsize as usize;
+            }
+
+            if phdr.p_type != PT_LOAD {
+                continue;
+            }
+
+            let page_table_flags = PageFlags::<CurrentMMArch>::new()
+                .execute(true)
+                .write(true)
+                .user(true);
+
+            let aligned_vaddr = (vaddr as usize) & !CurrentMMArch::PAGE_OFFSET_MASK;
+            let aligned_end = (vaddr as usize + memsize as usize + CurrentMMArch::PAGE_SIZE - 1)
+                & !(CurrentMMArch::PAGE_OFFSET_MASK);
+
+            let count = (aligned_end - aligned_vaddr + CurrentMMArch::PAGE_SIZE - 1)
+                / CurrentMMArch::PAGE_SIZE;
+
+            for i in 0..count {
+                let result = unsafe {
+                    mapper.map(
+                        VirtualAddress::new(aligned_vaddr as usize + i * CurrentMMArch::PAGE_SIZE),
+                        page_table_flags,
+                    )
+                };
+                if let Some(flusher) = result {
+                    flusher.flush();
+                }
+            }
+
+            unsafe {
+                core::intrinsics::copy_nonoverlapping(
+                    (interpreter_buffer.as_ptr() as usize + offset as usize) as *const u8,
+                    vaddr as *mut u8,
+                    size as usize,
+                );
+            }
+
+            if memsize > size {
+                unsafe {
+                    core::slice::from_raw_parts_mut(
+                        (vaddr as usize + size as usize) as *mut u8,
+                        memsize as usize - size as usize,
+                    )
+                }
+                .fill(0);
+            }
+        }
+
+        use_ldso = true;
+    }
     let count =
         (USER_STACK_SIZE as usize + CurrentMMArch::PAGE_SIZE - 1) / CurrentMMArch::PAGE_SIZE;
 
@@ -212,42 +313,50 @@ pub fn execve_from_buffer(
         }
     }
 
-    let mut proc_init_info = ProcInitInfo::new(&get_current_context().read().name);
+    let mut proc_init_info = ProcInitInfo::new(unsafe { CStr::from_ptr(path).to_str().unwrap() });
     proc_init_info.args = args;
     proc_init_info.envs = envs;
     proc_init_info
         .auxv
-        .insert(AtType::Entry as u8, elf_header.entry as usize);
+        .insert(AtType::ENTRY as u8, elf_header.entry as usize);
     proc_init_info.auxv.insert(
-        AtType::Phdr as u8,
-        EHDR_START + elf_header.header.e_phoff as usize,
+        AtType::PHDR as u8,
+        load_start + elf_header.header.e_phoff as usize,
     );
     proc_init_info
         .auxv
-        .insert(AtType::PhNum as u8, elf_header.program_headers.len());
+        .insert(AtType::PHNUM as u8, elf_header.header.e_phnum as usize);
     proc_init_info
         .auxv
-        .insert(AtType::PhEnt as u8, size_of::<ProgramHeader>());
+        .insert(AtType::PHENT as u8, size_of::<ProgramHeader>());
     proc_init_info
         .auxv
-        .insert(AtType::PageSize as u8, CurrentMMArch::PAGE_SIZE);
+        .insert(AtType::PAGESZ as u8, CurrentMMArch::PAGE_SIZE);
+    proc_init_info.auxv.insert(
+        AtType::BASE as u8,
+        if use_ldso { INTERPRETER_LOAD_BASE } else { 0 },
+    );
 
     get_current_context().write().memory_mappings.phdrs = elf_header.program_headers.clone();
     get_current_context()
         .write()
         .memory_mappings
-        .interpreter_load_start = 0;
+        .interpreter_load_start = interpreter_load_start;
     get_current_context()
         .write()
         .memory_mappings
-        .interpreter_load_end = 0;
+        .interpreter_load_end = interpreter_load_end;
 
     if let Ok((stack, _)) = unsafe { proc_init_info.push_at(USER_STACK_END) } {
         get_current_context().write().init_info = Some(proc_init_info);
-        get_current_context()
-            .write()
-            .arch
-            .go_to_user(elf_header.entry as usize, stack);
+        get_current_context().write().arch.go_to_user(
+            if use_ldso {
+                ldso_entry
+            } else {
+                elf_header.entry as usize
+            },
+            stack,
+        );
 
         let stack_point = get_current_context().read().arch.address();
         unsafe { mapper.make_current() };
@@ -260,15 +369,17 @@ pub fn execve_from_buffer(
 }
 
 pub const EHDR_START: usize = 0x0000_1000_0000_0000;
+pub const INTERPRETER_LOAD_BASE: usize = 0x0000_2000_0000_0000;
+pub const INTERPRETER_EHDR_START: usize = 0x0000_3000_0000_0000;
 
 pub fn sys_execve(
-    path: *const core::ffi::c_char,
+    path_ptr: *const core::ffi::c_char,
     argv: *const *mut core::ffi::c_char,
     envp: *const *mut core::ffi::c_char,
 ) -> Result<()> {
     arch_disable_intr();
 
-    let path = unsafe { CStr::from_ptr(path) };
+    let path = unsafe { CStr::from_ptr(path_ptr) };
 
     let node = get_inode_by_path(path.to_str().or(Err(Errno::EINVAL))?.to_string())
         .ok_or(Errno::ENOENT)?;
@@ -302,5 +413,5 @@ pub fn sys_execve(
         core::slice::from_raw_parts(buffer_start as *const u8, node.read().get_info().size)
     };
 
-    execve_from_buffer(buffer, argv, envp)
+    execve_from_buffer(path_ptr, buffer, argv, envp)
 }

@@ -36,6 +36,8 @@ pub fn sys_mmap(
         return Err(Errno::EINVAL);
     }
 
+    let fd_manager = get_file_descriptor_manager();
+
     let ctx = get_current_context();
     let mut ctx_lock = ctx.write();
 
@@ -72,7 +74,7 @@ pub fn sys_mmap(
     }
 
     if fd != -1_isize as usize {
-        if let Some(fd_manager) = get_file_descriptor_manager() {
+        if let Some(fd_manager) = fd_manager {
             if let Some((inode, _, _)) = fd_manager.file_descriptors.get(&fd) {
                 let buffer =
                     unsafe { core::slice::from_raw_parts_mut(virt_addr.data() as *mut u8, size) };
@@ -89,4 +91,28 @@ pub fn sys_mmap(
         .push((virt_addr.data(), size));
 
     Ok(virt_addr.data())
+}
+
+pub fn sys_munmap(addr: usize, size: usize) -> Result<usize> {
+    let mut mapper = unsafe {
+        rmm::PageMapper::<CurrentMMArch, TheFrameAllocator>::current(
+            rmm::TableKind::User,
+            TheFrameAllocator,
+        )
+    };
+
+    let frame_count = (size + CurrentMMArch::PAGE_SIZE - 1) / CurrentMMArch::PAGE_SIZE;
+
+    for i in 0..frame_count {
+        if let Some(flusher) = unsafe {
+            mapper.unmap(
+                VirtualAddress::new(addr + i * CurrentMMArch::PAGE_SIZE),
+                true,
+            )
+        } {
+            flusher.flush();
+        }
+    }
+
+    Ok(0)
 }

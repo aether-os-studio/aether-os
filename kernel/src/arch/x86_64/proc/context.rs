@@ -1,6 +1,6 @@
 use alloc::boxed::Box;
 use goblin::elf::program_header::PT_LOAD;
-use rmm::{Arch, PageFlags, PhysicalAddress, VirtualAddress};
+use rmm::{Arch, FrameAllocator, PageFlags, PhysicalAddress, VirtualAddress};
 use x86_64::{
     PhysAddr, VirtAddr,
     registers::{
@@ -12,7 +12,7 @@ use x86_64::{
 
 use crate::{
     arch::{CurrentMMArch, gdt::Selectors, rmm::PageMapper},
-    memory::{KERNEL_PAGE_TABLE, frame::TheFrameAllocator},
+    memory::{FRAME_ALLOCATOR, KERNEL_PAGE_TABLE, frame::TheFrameAllocator},
     proc::{
         ArchContext,
         exec::{USER_STACK_END, USER_STACK_SIZE},
@@ -318,6 +318,28 @@ impl ArchContext for ContextRegs {
                 Cr3::read().1,
             )
         };
+    }
+
+    fn exit(&self) {
+        let mut page_table = unsafe {
+            PageMapper::new(
+                rmm::TableKind::User,
+                PhysicalAddress::new(self.cr3),
+                TheFrameAllocator,
+            )
+        };
+
+        for i in 0..(CurrentMMArch::PAGE_ENTRIES / 2) {
+            unsafe {
+                if let Some(entry) = page_table.table().entry(i) {
+                    if entry.present() {
+                        page_table.unmap(VirtualAddress::new(i * CurrentMMArch::PAGE_SIZE), true);
+                    }
+                }
+            }
+        }
+
+        unsafe { FRAME_ALLOCATOR.lock().free_one(page_table.table().phys()) };
     }
 
     fn get_fs(&self) -> usize {

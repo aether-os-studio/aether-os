@@ -151,7 +151,7 @@ fn init_ioapic() {
 }
 
 pub fn end_of_interrupt() {
-    unsafe { LAPIC.0.lock().end_of_interrupt() };
+    unsafe { LAPIC.lock().end_of_interrupt() };
 }
 
 pub fn init() {

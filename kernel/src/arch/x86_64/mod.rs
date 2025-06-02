@@ -14,9 +14,13 @@ pub mod nr {
 }
 
 pub use ::rmm::X8664Arch as CurrentMMArch;
+use interrupts::InterruptIndex;
 
 use mp::{BSP_LAPIC_ID, CPUS};
-use x86_64::registers::control::{Cr0, Cr0Flags, Cr4, Cr4Flags};
+use x86_64::{
+    instructions::interrupts::software_interrupt,
+    registers::control::{Cr0, Cr0Flags, Cr4, Cr4Flags},
+};
 
 pub fn cpu_init() {
     let mut cr0 = Cr0::read();
@@ -40,6 +44,11 @@ pub fn init() {
     apic::init();
     CPUS.write().init_ap();
     syscall::init();
+}
+
+pub fn arch_yield() {
+    const TIMER_INTERRUPT: u8 = InterruptIndex::Timer as u8;
+    unsafe { software_interrupt::<TIMER_INTERRUPT>() };
 }
 
 pub fn arch_enable_intr() {

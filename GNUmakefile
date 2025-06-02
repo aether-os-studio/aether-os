@@ -48,7 +48,8 @@ run-hdd-aarch64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_N
 		-device usb-mouse \
 		-drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-code-$(KARCH).fd,readonly=on \
 		-drive if=pflash,unit=1,format=raw,file=ovmf/ovmf-vars-$(KARCH).fd \
-		-hda $(IMAGE_NAME).hdd \
+		-drive if=none,file=$(IMAGE_NAME).hdd,format=raw,id=bootdisk \
+		-device nvme,drive=bootdisk,serial=1234 \
 		$(QEMUFLAGS)
 
 .PHONY: run-hdd-riscv64
@@ -62,7 +63,8 @@ run-hdd-riscv64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMAGE_N
 		-device usb-mouse \
 		-drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-code-$(KARCH).fd,readonly=on \
 		-drive if=pflash,unit=1,format=raw,file=ovmf/ovmf-vars-$(KARCH).fd \
-		-hda $(IMAGE_NAME).hdd \
+		-drive if=none,file=$(IMAGE_NAME).hdd,format=raw,id=bootdisk \
+		-device nvme,drive=bootdisk,serial=1234 \
 		$(QEMUFLAGS)
 
 .PHONY: run-hdd-loongarch64
@@ -76,7 +78,8 @@ run-hdd-loongarch64: ovmf/ovmf-code-$(KARCH).fd ovmf/ovmf-vars-$(KARCH).fd $(IMA
 		-device usb-mouse \
 		-drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-code-$(KARCH).fd,readonly=on \
 		-drive if=pflash,unit=1,format=raw,file=ovmf/ovmf-vars-$(KARCH).fd \
-		-hda $(IMAGE_NAME).hdd \
+		-drive if=none,file=$(IMAGE_NAME).hdd,format=raw,id=bootdisk \
+		-device nvme,drive=bootdisk,serial=1234 \
 		$(QEMUFLAGS)
 
 ovmf/ovmf-code-$(KARCH).fd:
@@ -112,7 +115,7 @@ user:
 
 $(IMAGE_NAME).hdd: limine/limine kernel user
 	rm -f $(IMAGE_NAME).hdd
-	dd if=/dev/zero bs=1M count=0 seek=64 of=$(IMAGE_NAME).hdd
+	dd if=/dev/zero bs=1M count=0 seek=256 of=$(IMAGE_NAME).hdd
 	sgdisk $(IMAGE_NAME).hdd -n 1:2048 -t 1:ef00
 	mformat -i $(IMAGE_NAME).hdd@@1M
 	mmd -i $(IMAGE_NAME).hdd@@1M ::/EFI ::/EFI/BOOT ::/boot ::/boot/limine
@@ -133,7 +136,11 @@ ifeq ($(KARCH),loongarch64)
 	mcopy -i $(IMAGE_NAME).hdd@@1M limine/BOOTLOONGARCH64.EFI ::/EFI/BOOT
 endif
 
-	mcopy -i $(IMAGE_NAME).hdd@@1M user/rootfs-$(KARCH)/* ::/
+	mcopy -s -i $(IMAGE_NAME).hdd@@1M user/rootfs-$(ARCH)/bin ::/
+	mcopy -s -i $(IMAGE_NAME).hdd@@1M user/rootfs-$(ARCH)/sbin ::/
+	mcopy -s -i $(IMAGE_NAME).hdd@@1M user/rootfs-$(ARCH)/lib ::/
+	mcopy -s -i $(IMAGE_NAME).hdd@@1M user/rootfs-$(ARCH)/etc ::/
+	mcopy -s -i $(IMAGE_NAME).hdd@@1M user/rootfs-$(ARCH)/usr ::/
 
 .PHONY: clean
 clean:

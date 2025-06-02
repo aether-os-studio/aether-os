@@ -8,14 +8,17 @@ use alloc::{boxed::Box, string::String};
 use exec::ProcInitInfo;
 use goblin::elf::ProgramHeaders;
 use rmm::{Arch, FrameAllocator, FrameCount, PageFlags, PhysicalAddress, VirtualAddress};
-use sched::CONTEXTS;
+use sched::{CONTEXTS, get_current_context};
 use spin::RwLock;
 
 use crate::arch::CurrentMMArch;
 use crate::arch::nr::{SigAction, SignalStack};
 use crate::arch::rmm::PageMapper;
 use crate::fs::StdioIndexNode;
-use crate::fs::fd::init_file_descriptor_manager_with_stdin_stdout;
+use crate::fs::fd::{
+    FILE_DESCRIPTOR_MANAGERS, init_file_descriptor_manager,
+    init_file_descriptor_manager_with_stdin_stdout,
+};
 use crate::memory::frame::TheFrameAllocator;
 use crate::syscall::Result;
 use crate::{arch::proc::context::ContextRegs, memory::FRAME_ALLOCATOR};
@@ -25,6 +28,8 @@ pub mod exec;
 pub mod sched;
 pub mod signal;
 pub mod syscall;
+
+pub const MAX_FD_NUM: usize = 64;
 
 pub trait ArchContext {
     /// 内核线程初始化
@@ -41,6 +46,8 @@ pub trait ArchContext {
     fn page_table_address(&self) -> PhysicalAddress;
     /// 切换到当前
     fn make_current(&self);
+    /// 释放资源
+    fn exit(&self);
     /// 设置架构信息
     #[cfg(target_arch = "x86_64")]
     fn get_fs(&self) -> usize;
@@ -60,9 +67,16 @@ pub struct ContextMemoryMappings {
     pub brk_end: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ContextStatus {
+    Normal,
+    Died,
+}
+
 /// 最小调度单位
 pub struct Context {
     pid: usize,
+    pub ppid: usize,
     arch: Box<dyn ArchContext>,
     name: String,
     kernel_stack: VirtualAddress,
@@ -71,6 +85,8 @@ pub struct Context {
     signal: u64,
     blocked: u64,
     signal_stack: Option<SignalStack>,
+    status: ContextStatus,
+    pub code: usize,
     pub memory_mappings: ContextMemoryMappings,
 }
 
@@ -78,6 +94,53 @@ pub const BRK_START: usize = 0x0000_7000_0000_0000;
 
 unsafe impl Sync for Context {}
 unsafe impl Send for Context {}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct PosixOldUtsName {
+    pub sysname: [u8; 65],
+    pub nodename: [u8; 65],
+    pub release: [u8; 65],
+    pub version: [u8; 65],
+    pub machine: [u8; 65],
+}
+
+impl PosixOldUtsName {
+    pub fn new() -> Self {
+        const SYS_NAME: &[u8] = b"Linux";
+        const NODENAME: &[u8] = b"AetherOS";
+        const RELEASE: &[u8] = env!("CARGO_PKG_VERSION").as_bytes();
+        const VERSION: &[u8] = env!("CARGO_PKG_VERSION").as_bytes();
+
+        #[cfg(target_arch = "x86_64")]
+        const MACHINE: &[u8] = b"x86_64";
+
+        #[cfg(target_arch = "aarch64")]
+        const MACHINE: &[u8] = b"aarch64";
+
+        #[cfg(target_arch = "riscv64")]
+        const MACHINE: &[u8] = b"riscv64";
+
+        #[cfg(target_arch = "loongarch64")]
+        const MACHINE: &[u8] = b"longarch64";
+
+        let mut r = Self {
+            sysname: [0; 65],
+            nodename: [0; 65],
+            release: [0; 65],
+            version: [0; 65],
+            machine: [0; 65],
+        };
+
+        r.sysname[0..SYS_NAME.len()].copy_from_slice(SYS_NAME);
+        r.nodename[0..NODENAME.len()].copy_from_slice(NODENAME);
+        r.release[0..RELEASE.len()].copy_from_slice(RELEASE);
+        r.version[0..VERSION.len()].copy_from_slice(VERSION);
+        r.machine[0..MACHINE.len()].copy_from_slice(MACHINE);
+
+        return r;
+    }
+}
 
 static NEXT_PID: AtomicUsize = AtomicUsize::new(0);
 
@@ -99,6 +162,7 @@ impl Context {
 
         let mut context = Context {
             pid: NEXT_PID.fetch_add(1, Ordering::SeqCst),
+            ppid: 0,
             arch,
             name: name.clone(),
             kernel_stack: kernel_stack.add(STACK_SIZE),
@@ -107,6 +171,8 @@ impl Context {
             signal: 0,
             blocked: 0,
             signal_stack: None,
+            status: ContextStatus::Normal,
+            code: 0,
             memory_mappings: Default::default(),
         };
 
@@ -222,6 +288,7 @@ impl Context {
 
         let mut context = Context {
             pid: NEXT_PID.fetch_add(1, Ordering::SeqCst),
+            ppid: get_current_context().read().get_pid(),
             arch,
             name: self.name.clone(),
             kernel_stack: kernel_stack.add(STACK_SIZE),
@@ -230,23 +297,40 @@ impl Context {
             signal: 0,
             blocked: 0,
             signal_stack: None,
+            status: ContextStatus::Normal,
+            code: 0,
             memory_mappings: Default::default(),
         };
 
         context.memory_mappings.brk_start = BRK_START;
         context.memory_mappings.brk_end = BRK_START;
 
-        init_file_descriptor_manager_with_stdin_stdout(
-            context.get_pid(),
-            StdioIndexNode::new(),
-            StdioIndexNode::new(),
-        );
+        init_file_descriptor_manager(context.get_pid());
+
+        let file_descriptor_manager = FILE_DESCRIPTOR_MANAGERS.lock();
+
+        let context_file_descriptor_manager = file_descriptor_manager.get(&context.pid).unwrap();
+
+        for (_, (inode, mode, _)) in file_descriptor_manager
+            .get(&self.pid)
+            .unwrap()
+            .file_descriptors
+            .iter()
+        {
+            context_file_descriptor_manager.add_inode(inode.clone(), mode.clone());
+        }
 
         let context = Arc::new(RwLock::new(context));
 
         CONTEXTS.write().push_back(context.clone());
 
         context
+    }
+}
+
+impl Drop for Context {
+    fn drop(&mut self) {
+        self.arch.exit();
     }
 }
 

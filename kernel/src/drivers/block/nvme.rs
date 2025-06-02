@@ -49,7 +49,7 @@ type LockedQueuePair = Mutex<IoQueuePair<NvmeAllocator>>;
 
 pub struct NvmeBlockDevice {
     pub namespace: Namespace,
-    pub qpairs: BTreeMap<u16, LockedQueuePair>,
+    pub qpairs: LockedQueuePair,
 }
 
 pub struct NvmeManager(Vec<SharedNvmeDevice>);
@@ -67,7 +67,7 @@ impl NvmeManager {
 
                 Some(NvmeBlockDevice {
                     namespace,
-                    qpairs: BTreeMap::from([(*qpair.id(), Mutex::new(qpair))]),
+                    qpairs: Mutex::new(qpair),
                 })
             };
 
@@ -112,31 +112,23 @@ pub static NVME: Lazy<NvmeManager> = Lazy::new(|| {
 
 impl BlockDeviceBase for NvmeBlockDevice {
     fn read(&mut self, lba: usize, count: usize, addr: VirtualAddress) -> usize {
-        if let Some(qpair) = self.qpairs.get_mut(&1) {
-            let bytes = self.namespace.block_size() as usize * count;
-            qpair
-                .lock()
-                .read(addr.data() as *mut u8, bytes, lba as u64)
-                .expect("Failed read NVMe");
+        let bytes = self.namespace.block_size() as usize * count;
+        self.qpairs
+            .lock()
+            .read(addr.data() as *mut u8, bytes, lba as u64)
+            .expect("Failed write NVMe");
 
-            return bytes;
-        }
-
-        0
+        return bytes;
     }
 
     fn write(&mut self, lba: usize, count: usize, addr: VirtualAddress) -> usize {
-        if let Some(qpair) = self.qpairs.get_mut(&1) {
-            let bytes = self.namespace.block_size() as usize * count;
-            qpair
-                .lock()
-                .write(addr.data() as *mut u8, bytes, lba as u64)
-                .expect("Failed write NVMe");
+        let bytes = self.namespace.block_size() as usize * count;
+        self.qpairs
+            .lock()
+            .write(addr.data() as *mut u8, bytes, lba as u64)
+            .expect("Failed write NVMe");
 
-            return bytes;
-        }
-
-        0
+        return bytes;
     }
 
     fn block_size(&self) -> usize {

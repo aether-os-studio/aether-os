@@ -91,35 +91,48 @@ pub fn init() -> Result<(), DiskError<usize>> {
 
         let header = gpt.read_gpt_header(Lba(1), &mut buf)?;
 
-        let part_iter = gpt.gpt_partition_entry_array_iter(
-            GptPartitionEntryArrayLayout {
-                start_lba: header.partition_entry_lba.into(),
-                entry_size: GptPartitionEntrySize::new(header.size_of_partition_entry.to_u32())
-                    .ok()
-                    .ok_or(DiskError::Io(0))?,
-                num_entries: header.number_of_partition_entries.to_u32(),
-            },
-            &mut buf,
-        )?;
+        if let Some(entry_size) =
+            GptPartitionEntrySize::new(header.size_of_partition_entry.to_u32()).ok()
+        {
+            let part_iter = gpt.gpt_partition_entry_array_iter(
+                GptPartitionEntryArrayLayout {
+                    start_lba: header.partition_entry_lba.into(),
+                    entry_size,
+                    num_entries: header.number_of_partition_entries.to_u32(),
+                },
+                &mut buf,
+            )?;
 
-        let id_to_alpha = [
-            "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q",
-            "r", "s", "t", "u", "v", "w", "x", "y", "z",
-        ];
+            let id_to_alpha = [
+                "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p",
+                "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
+            ];
 
-        for (partition_id, part) in part_iter.enumerate() {
-            if let Ok(part) = part {
-                let device = PartitionDevice {
-                    device_id: i,
-                    start_bytes: part.starting_lba.to_u64() as usize * block_device.block_size(),
-                    total_bytes: (part.ending_lba.to_u64() as usize
-                        - part.starting_lba.to_u64() as usize
-                        + 1)
-                        * block_device.block_size(),
-                };
+            for (partition_id, part) in part_iter.enumerate() {
+                if let Ok(part) = part {
+                    if part.is_used() {
+                        let device = PartitionDevice {
+                            device_id: i,
+                            start_bytes: part.starting_lba.to_u64() as usize
+                                * block_device.block_size(),
+                            total_bytes: (part.ending_lba.to_u64() as usize
+                                - part.starting_lba.to_u64() as usize
+                                + 1)
+                                * block_device.block_size(),
+                        };
 
-                PARTITION_DEVICES.lock().push(device);
+                        PARTITION_DEVICES.lock().push(device);
+                    }
+                }
             }
+        } else {
+            let device = PartitionDevice {
+                device_id: i,
+                start_bytes: 0,
+                total_bytes: block_device.block_count() * block_device.block_size(),
+            };
+
+            PARTITION_DEVICES.lock().push(device);
         }
     }
 

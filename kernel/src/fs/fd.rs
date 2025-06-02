@@ -3,7 +3,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use alloc::{collections::btree_map::BTreeMap, string::String, sync::Arc};
 use spin::Mutex;
 
-use crate::proc::sched::get_current_context;
+use crate::proc::{MAX_FD_NUM, sched::get_current_context};
 
 use super::{
     ROOT,
@@ -11,9 +11,10 @@ use super::{
     vfs::{IndexNodeRef, IndexNodeType},
 };
 
-static FILE_DESCRIPTOR_MANAGERS: Mutex<BTreeMap<usize, Arc<FileDescriptorManager>>> =
+pub static FILE_DESCRIPTOR_MANAGERS: Mutex<BTreeMap<usize, Arc<FileDescriptorManager>>> =
     Mutex::new(BTreeMap::new());
 
+#[derive(Debug, Clone, Copy)]
 pub enum OpenMode {
     Read = 0,
     Write,
@@ -39,8 +40,13 @@ impl FileDescriptorManager {
     }
 
     pub fn get_new_fd(&self) -> FileDescriptor {
-        self.file_descriptor_allocator
-            .fetch_add(1, Ordering::SeqCst)
+        let ret = self
+            .file_descriptor_allocator
+            .fetch_add(1, Ordering::SeqCst);
+        if self.file_descriptor_allocator.load(Ordering::SeqCst) >= MAX_FD_NUM {
+            self.file_descriptor_allocator.store(3, Ordering::SeqCst);
+        }
+        ret
     }
 
     pub fn add_inode(&self, inode: IndexNodeRef, mode: OpenMode) -> FileDescriptor {
@@ -64,7 +70,7 @@ impl FileDescriptorManager {
     }
 }
 
-pub fn get_file_descriptor_manager<'a>() -> Option<Arc<FileDescriptorManager>> {
+pub fn get_file_descriptor_manager() -> Option<Arc<FileDescriptorManager>> {
     let pid = get_current_context().read().get_pid();
     FILE_DESCRIPTOR_MANAGERS.lock().get_mut(&pid).cloned()
 }

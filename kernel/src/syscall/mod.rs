@@ -1,5 +1,6 @@
 use mm::sys_brk;
 use mm::sys_mmap;
+use mm::sys_munmap;
 use rmm::Arch;
 
 mod mm;
@@ -8,14 +9,32 @@ use crate::errno::Errno;
 
 use crate::arch::CurrentMMArch;
 use crate::arch::nr::*;
+use crate::fs::syscall::sys_dup;
+use crate::fs::syscall::sys_faccessat;
+use crate::fs::syscall::sys_faccessat2;
+use crate::fs::syscall::sys_fcntl;
+use crate::fs::syscall::sys_fstat;
+use crate::fs::syscall::sys_getcwd;
+use crate::fs::syscall::sys_getrlimit;
+use crate::fs::syscall::sys_ioctl;
+use crate::fs::syscall::sys_lseek;
+use crate::fs::syscall::sys_prlimit64;
+use crate::fs::syscall::sys_readv;
+use crate::fs::syscall::sys_stat;
 use crate::fs::syscall::sys_write;
+use crate::fs::syscall::sys_writev;
 use crate::fs::syscall::{sys_close, sys_open, sys_read};
+use crate::fs::vfs::iov::IoVec;
+use crate::proc::PosixOldUtsName;
 use crate::proc::exec::sys_execve;
 use crate::proc::sched::get_current_context;
 use crate::proc::signal::sys_rt_sigaction;
 use crate::proc::signal::sys_rt_sigprocmask;
 use crate::proc::signal::sys_sigaltstack;
+use crate::proc::syscall::sys_exit;
 use crate::proc::syscall::sys_fork;
+use crate::proc::syscall::sys_uname;
+use crate::proc::syscall::sys_wait4;
 
 pub fn check_user_overflows(addr: usize, size: usize) -> bool {
     if let Some(addr) = addr.checked_add(size) {
@@ -73,8 +92,17 @@ pub fn handle_syscall(
             }
             Err(Errno::EINVAL)
         }
-        SYS_READV => Err(Errno::ENOSYS),
-        SYS_WRITEV => Err(Errno::ENOSYS),
+        SYS_READV => sys_readv(args.0, args.1 as *const IoVec, args.2),
+        SYS_WRITEV => sys_writev(args.0, args.1 as *const IoVec, args.2),
+        SYS_FCNTL => sys_fcntl(args.0, args.1, args.2),
+        SYS_DUP => sys_dup(args.0),
+        SYS_FACCESSAT => sys_faccessat(args.0, args.1, args.2),
+        SYS_FACCESSAT2 => sys_faccessat2(args.0, args.1, args.2, args.3),
+        SYS_GETCWD => sys_getcwd(args.0, args.1),
+        SYS_FSTAT => sys_fstat(args.0, args.1),
+        SYS_STAT => sys_stat(args.0 as *const core::ffi::c_char, args.1),
+        SYS_LSEEK => sys_lseek(args.0, args.1, args.2),
+        SYS_IOCTL => sys_ioctl(args.0, args.1, args.2),
         // network
         SYS_SOCKET => Err(Errno::ENOSYS),
         SYS_BIND => Err(Errno::ENOSYS),
@@ -121,10 +149,26 @@ pub fn handle_syscall(
             }
             Ok(get_current_context().read().get_pid())
         }
+        SYS_GETPPID => Ok(get_current_context().read().ppid),
         SYS_GETTID => Ok(get_current_context().read().get_pid()),
+        SYS_EXIT => sys_exit(args.0),
+        SYS_EXIT_GROUP => sys_exit(args.0),
+        SYS_WAIT4 => sys_wait4(args.0, args.1, args.2, args.3),
+        SYS_GETUID => Ok(0),
+        SYS_GETGID => Ok(0),
+        SYS_GETEUID => Ok(0),
+        SYS_GETEGID => Ok(0),
+        SYS_GETPGID => Ok(0),
+        SYS_SETPGID => Ok(0),
+        SYS_UNAME => sys_uname(args.0 as *mut PosixOldUtsName),
+        SYS_GETRLIMIT => sys_getrlimit(args.0, args.1),
+        SYS_PRLIMIT64 => sys_prlimit64(args.0, args.1, args.2),
         // Memory management
         SYS_BRK => sys_brk(args.0),
         SYS_MMAP => sys_mmap(args.0, args.1, args.2, args.3, args.4, args.5),
+        SYS_MUNMAP => sys_munmap(args.0, args.1),
+        SYS_MPROTECT => Ok(0),
+        // Others
         _ => Err(Errno::ENOSYS),
     };
 

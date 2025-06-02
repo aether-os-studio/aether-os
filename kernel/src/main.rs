@@ -27,12 +27,13 @@ mod net;
 mod proc;
 mod serial;
 mod syscall;
+mod time;
 
 use core::arch::asm;
 use core::sync::atomic::AtomicUsize;
 
 use alloc::ffi::CString;
-use arch::arch_enable_intr;
+use arch::arch_yield;
 use limine::BaseRevision;
 use limine::request::{RequestsEndMarker, RequestsStartMarker};
 use proc::exec::sys_execve;
@@ -74,20 +75,20 @@ unsafe extern "C" fn kmain() -> ! {
 }
 
 fn init() -> ! {
-    serial_println!("init thread is running");
+    info!("init thread is running");
 
     fs::init();
 
-    info!("Ready to run /bin/init");
+    info!("Ready to run /bin/bash");
 
     sys_execve(
-        CString::new("/bin/init").unwrap().as_ptr(),
+        CString::new("/bin/bash").unwrap().as_ptr(),
         core::ptr::null(),
         core::ptr::null(),
     )
-    .expect("Failed to execute /bin/init");
+    .expect("Failed to execute /bin/bash");
 
-    error!("Failed to run /bin/init");
+    error!("Failed to run /bin/bash");
 
     hcf()
 }
@@ -100,7 +101,7 @@ fn rust_panic(info: &core::panic::PanicInfo) -> ! {
 
 fn hcf() -> ! {
     loop {
-        arch_enable_intr();
+        arch_yield();
         unsafe {
             #[cfg(target_arch = "x86_64")]
             asm!("pause");
