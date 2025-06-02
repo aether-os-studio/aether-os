@@ -1,12 +1,21 @@
+use core::hint::spin_loop;
+
 use alloc::{string::String, sync::Arc};
 use fat::Fat32Volume;
 use spin::{Lazy, Mutex, RwLock};
 use vfs::{IndexNode, IndexNodeRef, fake::FakeFS, partition::PartitionIndexNode};
 
 use crate::{
-    drivers::{block::partition::PARTITION_DEVICES, display::FRAMEBUFFER_REQUEST, term::TERMINAL},
+    arch::{arch_disable_intr, arch_enable_intr},
+    drivers::{
+        base::input::BYTES, block::partition::PARTITION_DEVICES, display::FRAMEBUFFER_REQUEST,
+        term::TERMINAL,
+    },
     errno::Errno,
-    print, serial_print, serial_println,
+    fs::syscall::POLLIN,
+    print,
+    proc::sched::get_current_context,
+    serial_print,
     syscall::Result,
 };
 
@@ -213,12 +222,177 @@ pub const TIOCM_OUT1: usize = 0x2000;
 pub const TIOCM_OUT2: usize = 0x4000;
 pub const TIOCM_LOOP: usize = 0x8000;
 
-struct WinSize {
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct WinSize {
     pub ws_row: u16,
     pub ws_col: u16,
     pub ws_xpixel: u16,
     pub ws_ypixel: u16,
 }
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Termios {
+    pub c_iflag: u32, // 输入模式标志
+    pub c_oflag: u32, // 输出模式标志
+    pub c_cflag: u32, // 控制模式标志
+    pub c_lflag: u32, // 本地模式标志
+    pub c_line: u8,
+    pub c_cc: [u8; 32], // 控制字符
+}
+
+pub const VINTR: usize = 0;
+pub const VQUIT: usize = 1;
+pub const VERASE: usize = 2;
+pub const VKILL: usize = 3;
+pub const VEOF: usize = 4;
+pub const VTIME: usize = 5;
+pub const VMIN: usize = 6;
+pub const VSWTC: usize = 7;
+pub const VSTART: usize = 8;
+pub const VSTOP: usize = 9;
+pub const VSUSP: usize = 10;
+pub const VEOL: usize = 11;
+pub const VREPRINT: usize = 12;
+pub const VDISCARD: usize = 13;
+pub const VWERASE: usize = 14;
+pub const VLNEXT: usize = 15;
+pub const VEOL2: usize = 16;
+
+pub const IGNBRK: usize = 0000001;
+pub const BRKINT: usize = 0000002;
+pub const IGNPAR: usize = 0000004;
+pub const PARMRK: usize = 0000010;
+pub const INPCK: usize = 0000020;
+pub const ISTRIP: usize = 0000040;
+pub const INLCR: usize = 0000100;
+pub const IGNCR: usize = 0000200;
+pub const ICRNL: usize = 0000400;
+pub const IUCLC: usize = 0001000;
+pub const IXON: usize = 0002000;
+pub const IXANY: usize = 0004000;
+pub const IXOFF: usize = 0010000;
+pub const IMAXBEL: usize = 0020000;
+pub const IUTF8: usize = 0040000;
+
+pub const OPOST: usize = 0000001;
+pub const OLCUC: usize = 0000002;
+pub const ONLCR: usize = 0000004;
+pub const OCRNL: usize = 0000010;
+pub const ONOCR: usize = 0000020;
+pub const ONLRET: usize = 0000040;
+pub const OFILL: usize = 0000100;
+pub const OFDEL: usize = 0000200;
+pub const NLDLY: usize = 0000400;
+pub const NL0: usize = 0000000;
+pub const NL1: usize = 0000400;
+pub const CRDL: usize = 0003000;
+pub const CR0: usize = 0000000;
+pub const CR1: usize = 0001000;
+pub const CR2: usize = 0002000;
+pub const CR3: usize = 0003000;
+pub const TABDLY: usize = 0014000;
+pub const TAB0: usize = 0000000;
+pub const TAB1: usize = 0004000;
+pub const TAB2: usize = 0010000;
+pub const TAB3: usize = 0014000;
+pub const BSDLY: usize = 0020000;
+pub const BS0: usize = 0000000;
+pub const BS1: usize = 0020000;
+pub const FFDLY: usize = 0100000;
+pub const FF0: usize = 0000000;
+pub const FF1: usize = 0100000;
+
+pub const VTDLY: usize = 0040000;
+pub const VT0: usize = 0000000;
+pub const VT1: usize = 0040000;
+
+pub const B0: usize = 0000000;
+pub const B50: usize = 0000001;
+pub const B75: usize = 0000002;
+pub const B110: usize = 0000003;
+pub const B134: usize = 0000004;
+pub const B150: usize = 0000005;
+pub const B200: usize = 0000006;
+pub const B300: usize = 0000007;
+pub const B600: usize = 0000010;
+pub const B1200: usize = 0000011;
+pub const B1800: usize = 0000012;
+pub const B2400: usize = 0000013;
+pub const B4800: usize = 0000014;
+pub const B9600: usize = 0000015;
+pub const B19200: usize = 0000016;
+pub const B38400: usize = 0000017;
+
+pub const B57600: usize = 0010001;
+pub const B115200: usize = 0010002;
+pub const B230400: usize = 0010003;
+pub const B460800: usize = 0010004;
+pub const B500000: usize = 0010005;
+pub const B576000: usize = 0010006;
+pub const B921600: usize = 0010007;
+pub const B1000000: usize = 0010010;
+pub const B1152000: usize = 0010011;
+pub const B1500000: usize = 0010012;
+pub const B2000000: usize = 0010013;
+pub const B2500000: usize = 0010014;
+pub const B3000000: usize = 0010015;
+pub const B3500000: usize = 0010016;
+pub const B4000000: usize = 0010017;
+
+pub const CSIZE: usize = 0000060;
+pub const CS5: usize = 0000000;
+pub const CS6: usize = 0000020;
+pub const CS7: usize = 0000040;
+pub const CS8: usize = 0000060;
+pub const CSTOPB: usize = 0000100;
+pub const CREAD: usize = 0000200;
+pub const PARENB: usize = 0000400;
+pub const PARODD: usize = 0001000;
+pub const HUPCL: usize = 0002000;
+pub const CLOCAL: usize = 0004000;
+
+pub const ISIG: usize = 0000001;
+pub const ICANON: usize = 0000002;
+pub const ECHO: usize = 0000010;
+pub const ECHOE: usize = 0000020;
+pub const ECHOK: usize = 0000040;
+pub const ECHONL: usize = 0000100;
+pub const NOFLSH: usize = 0000200;
+pub const TOSTOP: usize = 0000400;
+pub const IEXTEN: usize = 0100000;
+
+pub const TCOOFF: usize = 0;
+pub const TCOON: usize = 1;
+pub const TCIOFF: usize = 2;
+pub const TCION: usize = 3;
+
+pub const TCIFLUSH: usize = 0;
+pub const TCOFLUSH: usize = 1;
+pub const TCIOFLUSH: usize = 2;
+
+pub const TCSANOW: usize = 0;
+pub const TCSADRAIN: usize = 1;
+pub const TCSAFLUSH: usize = 2;
+
+pub const EXTA: usize = 0000016;
+pub const EXTB: usize = 0000017;
+pub const CBAUD: usize = 0010017;
+pub const CBAUDEX: usize = 0010000;
+pub const CIBAUD: usize = 002003600000;
+pub const CMSPAR: usize = 010000000000;
+pub const CRTSCTS: usize = 020000000000;
+
+pub const XCASE: usize = 0000004;
+pub const ECHOCTL: usize = 0001000;
+pub const ECHOPRT: usize = 0002000;
+pub const ECHOKE: usize = 0004000;
+pub const FLUSHO: usize = 0010000;
+pub const PENDIN: usize = 0040000;
+pub const EXTPROC: usize = 0200000;
+
+pub const XTABS: usize = 0014000;
 
 impl IndexNode for StdioIndexNode {
     fn when_mounted(&mut self, path: String, father: Option<IndexNodeRef>) {
@@ -236,7 +410,39 @@ impl IndexNode for StdioIndexNode {
     }
 
     fn read_at(&self, _offset: usize, buf: &mut [u8]) -> crate::syscall::Result<usize> {
-        Ok(buf.len())
+        let mut bytes_written = 0;
+        let echo = get_current_context().read().termios.c_lflag & (ECHO as u32) != 0;
+        let icanon = get_current_context().read().termios.c_lflag & (ICANON as u32) != 0;
+
+        loop {
+            let bytes = BYTES.pop();
+            if let Some(byte) = bytes {
+                buf[bytes_written] = byte;
+                bytes_written += 1;
+
+                if echo {
+                    if byte == 8 && bytes_written >= 1 {
+                        serial_print!("{}", byte as char);
+                        print!("{}", byte as char);
+                        bytes_written -= 1;
+                    } else {
+                        let _ = self.write_at(0, &[byte]);
+                    }
+                }
+
+                if bytes_written >= buf.len() || (icanon && byte == b'\n') {
+                    break;
+                }
+            }
+
+            arch_enable_intr();
+
+            spin_loop();
+        }
+
+        arch_disable_intr();
+
+        Ok(bytes_written)
     }
 
     fn write_at(&self, _offset: usize, buf: &[u8]) -> crate::syscall::Result<usize> {
@@ -264,12 +470,44 @@ impl IndexNode for StdioIndexNode {
                 };
                 Ok(0)
             }
+            TIOCSWINSZ => return Ok(0),
+            TIOCGPGRP => {
+                let pid = arg as *mut i32;
+                unsafe { (*pid) = get_current_context().read().get_pid() as i32 };
+                Ok(0)
+            }
+            TIOCSPGRP => return Ok(0),
+            TCGETS => {
+                let termios_ptr = arg as *mut Termios;
+                unsafe {
+                    *termios_ptr = get_current_context().read().termios;
+                }
+                Ok(0)
+            }
+            TCSETS => {
+                let termios_ptr = arg as *const Termios;
+                unsafe {
+                    get_current_context().write().termios = *termios_ptr;
+                }
+                Ok(0)
+            }
+            TCSETSW => {
+                let termios_ptr = arg as *const Termios;
+                unsafe {
+                    get_current_context().write().termios = *termios_ptr;
+                }
+                Ok(0)
+            }
             _ => return Err(Errno::ENOSYS),
         }
     }
 
     fn poll(&self, event: usize) -> Result<usize> {
-        Ok(event)
+        let mut res = 0;
+        if (event & POLLIN) != 0 {
+            res |= POLLIN;
+        }
+        Ok(res)
     }
 }
 
@@ -280,7 +518,7 @@ pub fn init() {
     for partition in PARTITION_DEVICES.lock().iter() {
         if let Some(root) = Fat32Volume::new(PartitionIndexNode::new(partition.clone())) {
             *ROOT.lock() = root;
-            serial_println!("Mount root OK");
+            info!("Mount root OK");
             break;
         }
     }

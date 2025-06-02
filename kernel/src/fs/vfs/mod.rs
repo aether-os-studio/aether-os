@@ -10,6 +10,7 @@ pub type IndexNodeRef = Arc<RwLock<dyn IndexNode>>;
 pub mod fake;
 pub mod iov;
 pub mod partition;
+pub mod pipe;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub enum IndexNodeType {

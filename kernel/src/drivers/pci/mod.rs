@@ -11,7 +11,6 @@ use spin::{Lazy, Mutex};
 use crate::{
     arch::{CurrentMMArch, acpi::ACPI},
     memory::KERNEL_PAGE_TABLE,
-    println,
 };
 
 pub static PCI_DEVICES: Lazy<Mutex<Vec<PciDevice>>> = Lazy::new(|| {
@@ -229,7 +228,7 @@ impl<'a> PciResolver<'a> {
 }
 
 pub fn init() {
-    let _ = PCI_DEVICES.lock().iter().map(|d| {
-        println!("{}", d);
+    PCI_DEVICES.lock().iter().for_each(|d| {
+        info!("{}", d);
     });
 }

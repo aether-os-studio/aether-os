@@ -9,7 +9,7 @@ override USER_VARIABLE = $(if $(filter $(origin $(1)),default undefined),$(eval 
 $(call USER_VARIABLE,KARCH,x86_64)
 
 # Default user QEMU flags. These are appended to the QEMU command calls.
-$(call USER_VARIABLE,QEMUFLAGS,-m 2G -cpu max -serial stdio -smp 2 -net none)
+$(call USER_VARIABLE,QEMUFLAGS,-m 4G -cpu max -serial stdio -smp 2 -net none)
 
 $(call USER_VARIABLE,DEBUG,0)
 
@@ -113,7 +113,7 @@ kernel:
 user:
 	$(MAKE) -C user
 
-$(IMAGE_NAME).hdd: limine/limine kernel user
+$(IMAGE_NAME).hdd: limine/limine kernel
 	rm -f $(IMAGE_NAME).hdd
 	dd if=/dev/zero bs=1M count=0 seek=256 of=$(IMAGE_NAME).hdd
 	sgdisk $(IMAGE_NAME).hdd -n 1:2048 -t 1:ef00
@@ -135,6 +135,8 @@ endif
 ifeq ($(KARCH),loongarch64)
 	mcopy -i $(IMAGE_NAME).hdd@@1M limine/BOOTLOONGARCH64.EFI ::/EFI/BOOT
 endif
+
+	$(MAKE) -C user
 
 	mcopy -s -i $(IMAGE_NAME).hdd@@1M user/rootfs-$(ARCH)/bin ::/
 	mcopy -s -i $(IMAGE_NAME).hdd@@1M user/rootfs-$(ARCH)/sbin ::/

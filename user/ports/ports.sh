@@ -35,4 +35,4 @@ find $SYSROOT/../ -type l -exec bash -c '
     fi
 ' \;
 
-cp -r $SCRIPTPATH/etc/ $SYSROOT/../
+cp -r $SCRIPTPATH/etc $SYSROOT/../

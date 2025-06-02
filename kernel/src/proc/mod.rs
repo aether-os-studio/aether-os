@@ -8,20 +8,21 @@ use alloc::{boxed::Box, string::String};
 use exec::ProcInitInfo;
 use goblin::elf::ProgramHeaders;
 use rmm::{Arch, FrameAllocator, FrameCount, PageFlags, PhysicalAddress, VirtualAddress};
-use sched::{CONTEXTS, get_current_context};
+use sched::get_current_context;
 use spin::RwLock;
 
 use crate::arch::CurrentMMArch;
 use crate::arch::nr::{SigAction, SignalStack};
 use crate::arch::rmm::PageMapper;
-use crate::fs::StdioIndexNode;
-use crate::fs::fd::{
+use crate::fs::*;
+use crate::memory::frame::TheFrameAllocator;
+use crate::proc::sched::SCHEDULER;
+use crate::syscall::Result;
+use crate::{arch::proc::context::ContextRegs, memory::FRAME_ALLOCATOR};
+use fd::{
     FILE_DESCRIPTOR_MANAGERS, init_file_descriptor_manager,
     init_file_descriptor_manager_with_stdin_stdout,
 };
-use crate::memory::frame::TheFrameAllocator;
-use crate::syscall::Result;
-use crate::{arch::proc::context::ContextRegs, memory::FRAME_ALLOCATOR};
 
 pub mod abi;
 pub mod exec;
@@ -55,7 +56,7 @@ pub trait ArchContext {
     fn set_fs(&mut self, fsbase: usize);
 }
 
-pub const STACK_SIZE: usize = 32768;
+pub const STACK_SIZE: usize = 65536;
 
 #[derive(Default)]
 pub struct ContextMemoryMappings {
@@ -80,6 +81,7 @@ pub struct Context {
     arch: Box<dyn ArchContext>,
     name: String,
     kernel_stack: VirtualAddress,
+    pub syscall_stack: VirtualAddress,
     init_info: Option<ProcInitInfo>,
     actions: BTreeMap<usize, SigAction>,
     signal: u64,
@@ -88,6 +90,7 @@ pub struct Context {
     status: ContextStatus,
     pub code: usize,
     pub memory_mappings: ContextMemoryMappings,
+    pub termios: Termios,
 }
 
 pub const BRK_START: usize = 0x0000_7000_0000_0000;
@@ -158,6 +161,16 @@ impl Context {
         }
         .expect("Cannot allocate kernel stack");
 
+        let syscall_stack = unsafe {
+            FRAME_ALLOCATOR
+                .lock()
+                .allocate(FrameCount::new(
+                    STACK_SIZE / crate::arch::CurrentMMArch::PAGE_SIZE,
+                ))
+                .map(|p| CurrentMMArch::phys_to_virt(p))
+        }
+        .expect("Cannot allocate kernel stack");
+
         arch.init(entry, kernel_stack.data() + STACK_SIZE);
 
         let mut context = Context {
@@ -166,6 +179,7 @@ impl Context {
             arch,
             name: name.clone(),
             kernel_stack: kernel_stack.add(STACK_SIZE),
+            syscall_stack: syscall_stack.add(STACK_SIZE),
             init_info: None,
             actions: BTreeMap::new(),
             signal: 0,
@@ -174,7 +188,28 @@ impl Context {
             status: ContextStatus::Normal,
             code: 0,
             memory_mappings: Default::default(),
+            termios: Default::default(),
         };
+
+        context.termios.c_iflag =
+            BRKINT as u32 | ICRNL as u32 | INPCK as u32 | ISTRIP as u32 | IXON as u32;
+        context.termios.c_oflag = OPOST as u32;
+        context.termios.c_cflag = CS8 as u32 | CREAD as u32 | CLOCAL as u32;
+        context.termios.c_lflag = ECHO as u32 | ICANON as u32 | IEXTEN as u32 | ISIG as u32;
+        context.termios.c_line = 0;
+        context.termios.c_cc[VINTR] = 3; // Ctrl-C
+        context.termios.c_cc[VQUIT] = 28; // Ctrl-context.termios.c_cc[VERASE] = 127; // DEL
+        context.termios.c_cc[VKILL] = 21; // Ctrl-U
+        context.termios.c_cc[VEOF] = 4; // Ctrl-D
+        context.termios.c_cc[VTIME] = 0; // No timer
+        context.termios.c_cc[VMIN] = 1; // Return each byte
+        context.termios.c_cc[VSTART] = 17; // Ctrl-Q
+        context.termios.c_cc[VSTOP] = 19; // Ctrl-S
+        context.termios.c_cc[VSUSP] = 26; // Ctrl-Z
+        context.termios.c_cc[VREPRINT] = 18; // Ctrl-R
+        context.termios.c_cc[VDISCARD] = 15; // Ctrl-O
+        context.termios.c_cc[VWERASE] = 23; // Ctrl-W
+        context.termios.c_cc[VLNEXT] = 22; // Ctrl-V
 
         context.memory_mappings.brk_start = BRK_START;
         context.memory_mappings.brk_end = BRK_START;
@@ -282,6 +317,16 @@ impl Context {
         }
         .expect("Cannot allocate kernel stack");
 
+        let syscall_stack = unsafe {
+            FRAME_ALLOCATOR
+                .lock()
+                .allocate(FrameCount::new(
+                    STACK_SIZE / crate::arch::CurrentMMArch::PAGE_SIZE,
+                ))
+                .map(|p| CurrentMMArch::phys_to_virt(p))
+        }
+        .expect("Cannot allocate syscall stack");
+
         let arch = self
             .arch
             .clone(kernel_stack.add(STACK_SIZE), VirtualAddress::new(regs_ptr));
@@ -292,6 +337,7 @@ impl Context {
             arch,
             name: self.name.clone(),
             kernel_stack: kernel_stack.add(STACK_SIZE),
+            syscall_stack: syscall_stack.add(STACK_SIZE),
             init_info: None,
             actions: BTreeMap::new(),
             signal: 0,
@@ -300,7 +346,28 @@ impl Context {
             status: ContextStatus::Normal,
             code: 0,
             memory_mappings: Default::default(),
+            termios: Default::default(),
         };
+
+        context.termios.c_iflag =
+            BRKINT as u32 | ICRNL as u32 | INPCK as u32 | ISTRIP as u32 | IXON as u32;
+        context.termios.c_oflag = OPOST as u32;
+        context.termios.c_cflag = CS8 as u32 | CREAD as u32 | CLOCAL as u32;
+        context.termios.c_lflag = ECHO as u32 | ICANON as u32 | IEXTEN as u32 | ISIG as u32;
+        context.termios.c_line = 0;
+        context.termios.c_cc[VINTR] = 3; // Ctrl-C
+        context.termios.c_cc[VQUIT] = 28; // Ctrl-context.termios.c_cc[VERASE] = 127; // DEL
+        context.termios.c_cc[VKILL] = 21; // Ctrl-U
+        context.termios.c_cc[VEOF] = 4; // Ctrl-D
+        context.termios.c_cc[VTIME] = 0; // No timer
+        context.termios.c_cc[VMIN] = 1; // Return each byte
+        context.termios.c_cc[VSTART] = 17; // Ctrl-Q
+        context.termios.c_cc[VSTOP] = 19; // Ctrl-S
+        context.termios.c_cc[VSUSP] = 26; // Ctrl-Z
+        context.termios.c_cc[VREPRINT] = 18; // Ctrl-R
+        context.termios.c_cc[VDISCARD] = 15; // Ctrl-O
+        context.termios.c_cc[VWERASE] = 23; // Ctrl-W
+        context.termios.c_cc[VLNEXT] = 22; // Ctrl-V
 
         context.memory_mappings.brk_start = BRK_START;
         context.memory_mappings.brk_end = BRK_START;
@@ -322,7 +389,7 @@ impl Context {
 
         let context = Arc::new(RwLock::new(context));
 
-        CONTEXTS.write().push_back(context.clone());
+        SCHEDULER.lock().add(context.clone());
 
         context
     }
@@ -338,12 +405,10 @@ pub type SharedContext = Arc<RwLock<Context>>;
 pub type WeakSharedContext = Weak<RwLock<Context>>;
 
 pub fn init() {
-    CONTEXTS
-        .write()
-        .push_back(Arc::new(RwLock::new(Context::new(
-            "init".to_string(),
-            crate::init as usize,
-        ))));
-
     sched::init();
+
+    SCHEDULER.lock().add(Arc::new(RwLock::new(Context::new(
+        "init".to_string(),
+        crate::init as usize,
+    ))));
 }

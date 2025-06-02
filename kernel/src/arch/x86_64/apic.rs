@@ -6,6 +6,7 @@ use spin::{Lazy, Mutex, MutexGuard};
 use x2apic::ioapic::{IrqMode, RedirectionTableEntry};
 use x2apic::lapic::{LocalApicBuilder, TimerMode};
 use x2apic::{ioapic::IoApic, lapic::LocalApic};
+use x86_64::instructions::port::Port;
 
 use crate::arch::CurrentMMArch;
 use crate::arch::hpet::HPET;
@@ -88,10 +89,18 @@ pub static LAPIC: Lazy<LockedLocalApic> = Lazy::new(|| {
     let info = acpi_tables.platform_info().unwrap().interrupt_model;
     let apic = match info {
         InterruptModel::Apic(apic) => apic,
-        _ => panic!(),
+        _ => panic!("Unknown interrupt model"),
     };
     LockedLocalApic::new(apic.local_apic_address as usize)
 });
+
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
+pub enum IrqVector {
+    Keyboard = 1,
+    Mouse = 12,
+    HpetTimer = 20,
+}
 
 pub static IOAPIC: Lazy<LockedIoApic> = Lazy::new(|| {
     let acpi_tables = ACPI.get().unwrap();
@@ -104,15 +113,15 @@ pub static IOAPIC: Lazy<LockedIoApic> = Lazy::new(|| {
     LockedIoApic::new(apic.io_apics[0].address as usize)
 });
 
-unsafe fn ioapic_add_entry(irq: InterruptIndex, vector: InterruptIndex) {
+unsafe fn ioapic_add_entry(irq: InterruptIndex, vector: IrqVector) {
     let lapic = LAPIC.lock();
     let mut ioapic = IOAPIC.lock();
     let mut entry = RedirectionTableEntry::default();
     entry.set_mode(IrqMode::Fixed);
     entry.set_dest(lapic.id() as u8);
-    entry.set_vector(vector as u8);
-    ioapic.set_table_entry(irq as u8, entry);
-    ioapic.enable_irq(irq as u8);
+    entry.set_vector(irq as u8);
+    ioapic.set_table_entry(vector as u8, entry);
+    ioapic.enable_irq(vector as u8);
 }
 
 pub const TIMER_FREQUENCY_HZ: u32 = 500;
@@ -126,14 +135,14 @@ pub unsafe fn calibrate_timer() {
     let hpet_clock_speed = HPET.clock_speed() as u64;
     let hpet_tick_per_ms = 1_000_000_000_000 / hpet_clock_speed;
 
-    for _ in 0..5 {
+    for _ in 0..50 {
         let next_ms = HPET.get_counter() + hpet_tick_per_ms;
         lapic.set_timer_initial(!0);
         while HPET.get_counter() < next_ms {}
         lapic_total_ticks += !0 - lapic.timer_current();
     }
 
-    let average_clock_per_ms = lapic_total_ticks / 5;
+    let average_clock_per_ms = lapic_total_ticks / 50;
     serial_println!("Calibrated clock per ms: {}", average_clock_per_ms);
 
     lapic.set_timer_mode(TimerMode::Periodic);
@@ -154,9 +163,21 @@ pub fn end_of_interrupt() {
     unsafe { LAPIC.lock().end_of_interrupt() };
 }
 
+pub unsafe fn disable_pic() {
+    Port::<u8>::new(0x21).write(0xff);
+    Port::<u8>::new(0xa1).write(0xff);
+}
+
 pub fn init() {
+    unsafe { disable_pic() };
     init_apic();
     init_ioapic();
     unsafe { calibrate_timer() };
+
+    unsafe {
+        ioapic_add_entry(InterruptIndex::Keyboard, IrqVector::Keyboard);
+        ioapic_add_entry(InterruptIndex::Mouse, IrqVector::Mouse);
+    }
+
     unsafe { LAPIC.lock().enable() };
 }

@@ -1,7 +1,7 @@
 use crate::{
     arch::nr::{SigAction, SignalStack},
     errno::Errno,
-    syscall::{Result, check_user_overflows, slice_from_user, slice_from_user_mut},
+    syscall::{Result, check_user_overflows},
 };
 
 use super::sched::get_current_context;
@@ -70,7 +70,7 @@ pub fn sys_rt_sigprocmask(
     sigsetsize: usize,
 ) -> Result<usize> {
     // 验证信号集大小
-    if sigsetsize != 8 {
+    if sigsetsize < 8 {
         return Err(Errno::EINVAL);
     }
 
@@ -79,27 +79,21 @@ pub fn sys_rt_sigprocmask(
 
     // 保存旧信号屏蔽
     if !oldset.is_null() {
-        if let Some(dest) = slice_from_user_mut(oldset, 1) {
-            dest[0] = ctx_lock.blocked;
-        } else {
-            return Err(Errno::EFAULT);
-        }
+        let dest = unsafe { core::slice::from_raw_parts_mut(oldset, 1) };
+        dest[0] = ctx_lock.blocked;
     }
 
     // 设置新信号屏蔽
     if !set.is_null() {
-        if let Some(src) = slice_from_user(set, 1) {
-            match how {
-                SIG_BLOCK => ctx_lock.blocked |= src[0],
-                SIG_UNBLOCK => ctx_lock.blocked &= !src[0],
-                SIG_SETMASK => ctx_lock.blocked = src[0],
-                _ => return Err(Errno::EINVAL),
-            }
-            // 强制允许SIGKILL和SIGSTOP
-            ctx_lock.blocked &= !((1 << 9) | (1 << 19));
-        } else {
-            return Err(Errno::EFAULT);
+        let src = unsafe { core::slice::from_raw_parts(set, 1) };
+        match how {
+            SIG_BLOCK => ctx_lock.blocked |= src[0],
+            SIG_UNBLOCK => ctx_lock.blocked &= !src[0],
+            SIG_SETMASK => ctx_lock.blocked = src[0],
+            _ => return Err(Errno::EINVAL),
         }
+        // 强制允许SIGKILL和SIGSTOP
+        ctx_lock.blocked &= !((1 << 9) | (1 << 19));
     }
 
     Ok(0)

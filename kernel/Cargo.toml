@@ -7,6 +7,8 @@ edition = "2024"
 acpi = "5.2.0"
 bit_field = "0.10.2"
 bitflags = "2.9.1"
+buddy_system_allocator = "0.11.0"
+crossbeam-queue = { version = "0.3.12", features = ["alloc"], default-features = false }
 good_memory_allocator = "0.1.7"
 gpt_disk_io = "0.16.2"
 limine = "0.4"
@@ -14,10 +16,10 @@ log = "0.4.27"
 num-derive = "0.4.2"
 nvme = "0.2.2"
 os-terminal = "0.6.10"
+pc-keyboard = "0.8.0"
 pci_types = "0.10.0"
 rmm = { path = "crates/rmm", default-features = false }
 spin = "0.10.0"
-x86_rtc = "0.1.1"
 
 [dependencies.conquer-once]
 version = "0.4.0"

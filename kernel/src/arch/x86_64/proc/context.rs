@@ -142,7 +142,7 @@ impl ArchContext for ContextRegs {
         unsafe {
             (*self.regs).cs = code.0 as usize;
             (*self.regs).ss = data.0 as usize;
-            (*self.regs).rflags = 0x200;
+            (*self.regs).rflags = 0x200246;
             (*self.regs).rbp = stack;
             (*self.regs).rsp = stack;
             (*self.regs).rip = entry;

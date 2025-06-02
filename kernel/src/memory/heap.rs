@@ -6,7 +6,7 @@ use crate::arch::CurrentMMArch;
 use super::KERNEL_PAGE_TABLE;
 
 pub const KERNEL_HEAP_START: usize = 0xffff_c000_0000_0000;
-pub const KERNEL_HEAP_SIZE: usize = 32 * 1024 * 1024;
+pub const KERNEL_HEAP_SIZE: usize = 64 * 1024 * 1024;
 
 #[global_allocator]
 pub static KERNEL_ALLOCATOR: SpinLockedAllocator = SpinLockedAllocator::empty();

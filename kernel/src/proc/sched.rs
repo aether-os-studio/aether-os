@@ -1,21 +1,30 @@
-use core::{ops::Add, sync::atomic::AtomicBool};
+use core::sync::atomic::{AtomicBool, Ordering};
 
 use alloc::collections::{btree_map::BTreeMap, vec_deque::VecDeque};
 use rmm::VirtualAddress;
 use spin::{Lazy, Mutex, RwLock};
 
-use crate::arch::proc::{arch_get_cpu_id, arch_set_kernel_stack};
+use crate::{
+    CPU_COUNT,
+    arch::{
+        mp::CPUS,
+        proc::{arch_get_cpu_id, arch_set_kernel_stack},
+    },
+    proc::STACK_SIZE,
+};
 
-use super::{STACK_SIZE, SharedContext};
+use super::SharedContext;
 
 pub struct Scheduler {
     pub currents: BTreeMap<u32, SharedContext>,
+    idx: usize,
 }
 
 impl Default for Scheduler {
     fn default() -> Self {
         Scheduler {
             currents: BTreeMap::new(),
+            idx: 0,
         }
     }
 }
@@ -30,27 +39,42 @@ impl Scheduler {
 
         let mut contexts = CONTEXTS.write();
 
-        if let Some(current) = self.currents.get(&cpu_id) {
-            current.write().arch.set_address(prev_context);
+        let queue = contexts.get_mut(&cpu_id).unwrap();
 
-            contexts.push_back(current.clone());
-        }
+        if let Some(new) = queue.pop_front() {
+            if let Some(current) = self.currents.get(&cpu_id) {
+                current.write().arch.set_address(prev_context);
+                queue.push_back(current.clone());
+            }
 
-        if let Some(next) = contexts.pop_front() {
-            self.currents.insert(cpu_id, next.clone());
-            arch_set_kernel_stack(next.read().kernel_stack.data().add(STACK_SIZE));
-            // switch fs/gs base
-            next.read().arch.make_current();
-            next.read().arch.address()
+            self.currents.insert(cpu_id, new.clone());
+
+            arch_set_kernel_stack(new.read().kernel_stack.add(STACK_SIZE).data());
+
+            new.read().arch.make_current();
+            new.read().arch.address()
         } else {
-            return prev_context;
+            prev_context
         }
+    }
+
+    pub fn add(&mut self, context: SharedContext) {
+        let mut contexts = CONTEXTS.write();
+
+        let cpus = CPUS.write();
+        let mut cpus_iter = cpus.iter_id();
+        let cpu_id = cpus_iter.nth(self.idx).unwrap();
+        self.idx = (self.idx + 1) % CPU_COUNT.load(Ordering::SeqCst);
+
+        let queue = contexts.get_mut(&cpu_id).unwrap();
+
+        queue.push_back(context);
     }
 }
 
 pub static SCHEDULER_ENABLED: AtomicBool = AtomicBool::new(false);
 
-pub static CONTEXTS: RwLock<VecDeque<SharedContext>> = RwLock::new(VecDeque::new());
+pub static CONTEXTS: RwLock<BTreeMap<u32, VecDeque<SharedContext>>> = RwLock::new(BTreeMap::new());
 
 unsafe impl Send for Scheduler {}
 unsafe impl Sync for Scheduler {}
@@ -67,5 +91,9 @@ pub fn get_current_context() -> SharedContext {
 }
 
 pub fn init() {
-    SCHEDULER_ENABLED.store(true, core::sync::atomic::Ordering::SeqCst);
+    CPUS.read().iter_id().for_each(|&id| {
+        CONTEXTS.write().insert(id, VecDeque::new());
+    });
+
+    SCHEDULER_ENABLED.store(true, Ordering::SeqCst);
 }

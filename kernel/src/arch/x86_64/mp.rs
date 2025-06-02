@@ -6,8 +6,11 @@ use limine::request::MpRequest;
 use spin::{Lazy, RwLock};
 
 use crate::{
-    arch::apic::{CALIBRATED_LAPIC_TIMER_INITIAL, LAPIC},
-    serial_println,
+    CPU_COUNT, ENABLE_SCHEDULER,
+    arch::{
+        apic::{CALIBRATED_LAPIC_TIMER_INITIAL, LAPIC},
+        arch_disable_intr,
+    },
 };
 
 use super::gdt::CpuInfo;
@@ -54,6 +57,8 @@ impl Cpus {
     pub fn init_ap(&mut self) {
         let response = MP_REQUEST.get_response().unwrap();
 
+        CPU_COUNT.store(response.cpus().len(), Ordering::SeqCst);
+
         for cpu in response.cpus() {
             if cpu.lapic_id != *BSP_LAPIC_ID {
                 self.0.insert(cpu.lapic_id, CpuInfo::default());
@@ -64,16 +69,20 @@ impl Cpus {
 }
 
 unsafe extern "C" fn ap_entry(cpu: &Cpu) -> ! {
-    serial_println!("APU {} starting...", cpu.id);
+    info!("APU {} starting...", cpu.id);
+
+    arch_disable_intr();
 
     super::cpu_init();
 
-    CPUS.write().get_mut(cpu.lapic_id).init();
+    CPUS.write().load(cpu.lapic_id);
     super::interrupts::init();
 
     let timer_initial = CALIBRATED_LAPIC_TIMER_INITIAL.load(Ordering::Relaxed);
     LAPIC.lock().set_timer_initial(timer_initial);
     unsafe { LAPIC.lock().enable() };
+
+    while ENABLE_SCHEDULER.load(Ordering::SeqCst) {}
 
     super::syscall::init();
 

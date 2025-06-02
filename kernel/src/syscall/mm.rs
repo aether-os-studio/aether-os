@@ -114,5 +114,17 @@ pub fn sys_munmap(addr: usize, size: usize) -> Result<usize> {
         }
     }
 
+    let context = get_current_context();
+    let mut context = context.write();
+
+    if let Some(idx) = context
+        .memory_mappings
+        .mapped_regions
+        .iter()
+        .position(|r| r.0 == addr)
+    {
+        context.memory_mappings.mapped_regions.remove(idx);
+    }
+
     Ok(0)
 }

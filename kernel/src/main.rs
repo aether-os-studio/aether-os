@@ -29,14 +29,15 @@ mod serial;
 mod syscall;
 mod time;
 
-use core::arch::asm;
-use core::sync::atomic::AtomicUsize;
+use core::hint::spin_loop;
+use core::sync::atomic::{AtomicBool, AtomicUsize};
 
 use alloc::ffi::CString;
-use arch::arch_yield;
 use limine::BaseRevision;
 use limine::request::{RequestsEndMarker, RequestsStartMarker};
 use proc::exec::sys_execve;
+
+use crate::arch::{arch_disable_intr, arch_enable_intr};
 
 /// Sets the base revision to the latest revision supported by the crate.
 /// See specification for further info.
@@ -55,12 +56,15 @@ static _START_MARKER: RequestsStartMarker = RequestsStartMarker::new();
 static _END_MARKER: RequestsEndMarker = RequestsEndMarker::new();
 
 pub static CPU_COUNT: AtomicUsize = AtomicUsize::new(0);
+pub static ENABLE_SCHEDULER: AtomicBool = AtomicBool::new(false);
 
 #[unsafe(no_mangle)]
 unsafe extern "C" fn kmain() -> ! {
     // All limine requests must also be referenced in a called function, otherwise they may be
     // removed by the linker.
     assert!(BASE_REVISION.is_supported());
+
+    arch_disable_intr();
 
     memory::init();
     memory::heap::init();
@@ -71,13 +75,17 @@ unsafe extern "C" fn kmain() -> ! {
 
     proc::init();
 
+    drivers::init_after_proc();
+
+    fs::init();
+
+    ENABLE_SCHEDULER.store(true, core::sync::atomic::Ordering::SeqCst);
+
     hcf();
 }
 
 fn init() -> ! {
     info!("init thread is running");
-
-    fs::init();
 
     info!("Ready to run /bin/bash");
 
@@ -96,19 +104,14 @@ fn init() -> ! {
 #[panic_handler]
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     error!("{}", info);
-    hcf()
+    loop {
+        spin_loop();
+    }
 }
 
 fn hcf() -> ! {
     loop {
-        arch_yield();
-        unsafe {
-            #[cfg(target_arch = "x86_64")]
-            asm!("pause");
-            #[cfg(any(target_arch = "aarch64", target_arch = "riscv64"))]
-            asm!("wfi");
-            #[cfg(target_arch = "loongarch64")]
-            asm!("idle 0");
-        }
+        arch_enable_intr();
+        spin_loop();
     }
 }

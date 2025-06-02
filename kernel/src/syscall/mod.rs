@@ -9,32 +9,15 @@ use crate::errno::Errno;
 
 use crate::arch::CurrentMMArch;
 use crate::arch::nr::*;
-use crate::fs::syscall::sys_dup;
-use crate::fs::syscall::sys_faccessat;
-use crate::fs::syscall::sys_faccessat2;
-use crate::fs::syscall::sys_fcntl;
-use crate::fs::syscall::sys_fstat;
-use crate::fs::syscall::sys_getcwd;
-use crate::fs::syscall::sys_getrlimit;
-use crate::fs::syscall::sys_ioctl;
-use crate::fs::syscall::sys_lseek;
-use crate::fs::syscall::sys_prlimit64;
-use crate::fs::syscall::sys_readv;
-use crate::fs::syscall::sys_stat;
-use crate::fs::syscall::sys_write;
-use crate::fs::syscall::sys_writev;
-use crate::fs::syscall::{sys_close, sys_open, sys_read};
+use crate::fs::syscall::WeirdPselect6;
+use crate::fs::syscall::*;
 use crate::fs::vfs::iov::IoVec;
 use crate::proc::PosixOldUtsName;
 use crate::proc::exec::sys_execve;
-use crate::proc::sched::get_current_context;
-use crate::proc::signal::sys_rt_sigaction;
-use crate::proc::signal::sys_rt_sigprocmask;
-use crate::proc::signal::sys_sigaltstack;
-use crate::proc::syscall::sys_exit;
-use crate::proc::syscall::sys_fork;
-use crate::proc::syscall::sys_uname;
-use crate::proc::syscall::sys_wait4;
+use crate::proc::sched::*;
+use crate::proc::signal::*;
+use crate::proc::syscall::*;
+use crate::time::PosixTimeSpec;
 
 pub fn check_user_overflows(addr: usize, size: usize) -> bool {
     if let Some(addr) = addr.checked_add(size) {
@@ -99,10 +82,36 @@ pub fn handle_syscall(
         SYS_FACCESSAT => sys_faccessat(args.0, args.1, args.2),
         SYS_FACCESSAT2 => sys_faccessat2(args.0, args.1, args.2, args.3),
         SYS_GETCWD => sys_getcwd(args.0, args.1),
+        SYS_CHDIR => sys_chdir(args.0),
         SYS_FSTAT => sys_fstat(args.0, args.1),
         SYS_STAT => sys_stat(args.0 as *const core::ffi::c_char, args.1),
         SYS_LSEEK => sys_lseek(args.0, args.1, args.2),
         SYS_IOCTL => sys_ioctl(args.0, args.1, args.2),
+        SYS_SELECT => sys_select(
+            args.0,
+            args.1,
+            args.2,
+            args.3,
+            args.4 as *const PosixTimeSpec,
+        ),
+        SYS_PSELECT6 => sys_pselect6(
+            args.0,
+            args.1,
+            args.2,
+            args.3,
+            args.4 as *const PosixTimeSpec,
+            args.5 as *const WeirdPselect6,
+        ),
+        SYS_PIPE => {
+            let pipefd = slice_from_user_mut(args.0 as *mut i32, 2).ok_or(Errno::EFAULT)?;
+            sys_pipe(pipefd)
+        }
+        SYS_READLINK => {
+            if let Some(buf) = slice_from_user_mut(args.1 as *mut u8, args.2) {
+                return sys_readlink(args.0 as *const core::ffi::c_char, buf);
+            }
+            Err(Errno::EFAULT)
+        }
         // network
         SYS_SOCKET => Err(Errno::ENOSYS),
         SYS_BIND => Err(Errno::ENOSYS),
@@ -133,6 +142,9 @@ pub fn handle_syscall(
             args.3,
         ),
         SYS_RT_SIGPROCMASK => {
+            if check_user_overflows(args.1, args.3) || check_user_overflows(args.2, args.3) {
+                return Err(Errno::EFAULT);
+            }
             sys_rt_sigprocmask(args.0, args.1 as *const u64, args.2 as *mut u64, args.3)
         }
         SYS_SIGALTSTACK => {
@@ -159,6 +171,8 @@ pub fn handle_syscall(
         SYS_GETEUID => Ok(0),
         SYS_GETEGID => Ok(0),
         SYS_GETPGID => Ok(0),
+        SYS_SETUID => Ok(0),
+        SYS_SETGID => Ok(0),
         SYS_SETPGID => Ok(0),
         SYS_UNAME => sys_uname(args.0 as *mut PosixOldUtsName),
         SYS_GETRLIMIT => sys_getrlimit(args.0, args.1),

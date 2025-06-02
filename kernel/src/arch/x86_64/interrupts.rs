@@ -1,12 +1,13 @@
 use rmm::VirtualAddress;
 use spin::Lazy;
 use x86_64::{
+    instructions::port::PortReadOnly,
     registers::control::Cr2,
     set_general_handler,
     structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode},
 };
 
-use crate::{proc::sched::SCHEDULER, serial_println};
+use crate::{drivers::ps2::keyboard::SCANCODES, proc::sched::SCHEDULER};
 
 use super::gdt::DOUBLE_FAULT_IST_INDEX;
 
@@ -18,6 +19,8 @@ pub enum InterruptIndex {
     Timer = INTERRUPT_INDEX_OFFSET,
     ApicError,
     ApicSpurious,
+    Keyboard,
+    Mouse,
 }
 
 pub static IDT: Lazy<InterruptDescriptorTable> = Lazy::new(|| {
@@ -32,31 +35,35 @@ pub static IDT: Lazy<InterruptDescriptorTable> = Lazy::new(|| {
     idt.general_protection_fault
         .set_handler_fn(general_protection_fault);
 
-    idt[InterruptIndex::Timer as u8].set_handler_fn(timer_interrupt);
-    idt[InterruptIndex::ApicError as u8].set_handler_fn(lapic_error);
-    idt[InterruptIndex::ApicSpurious as u8].set_handler_fn(spurious_interrupt);
-
     unsafe {
         idt.double_fault
             .set_handler_fn(double_fault)
             .set_stack_index(DOUBLE_FAULT_IST_INDEX as u16);
     }
 
+    idt[InterruptIndex::Timer as u8].set_handler_fn(timer_interrupt);
+    idt[InterruptIndex::ApicError as u8].set_handler_fn(lapic_error);
+    idt[InterruptIndex::ApicSpurious as u8].set_handler_fn(spurious_interrupt);
+    idt[InterruptIndex::Keyboard as u8].set_handler_fn(keyboard_interrupt);
+    idt[InterruptIndex::Mouse as u8].set_handler_fn(mouse_interrupt);
+
     return idt;
 });
 
 fn x64_do_irq(frame: InterruptStackFrame, index: u8, error_code: Option<u64>) {
-    serial_println!("Unhandled IRQ {}", index);
+    error!("Unhandled IRQ {}", index);
 }
 
 #[unsafe(naked)]
 extern "x86-interrupt" fn timer_interrupt(_frame: InterruptStackFrame) {
     fn timer_handler(context: VirtualAddress) -> VirtualAddress {
+        let ret = SCHEDULER.lock().schedule(context);
         super::apic::end_of_interrupt();
-        SCHEDULER.lock().schedule(context)
+        ret
     }
 
     core::arch::naked_asm!(
+        "cli",
         crate::push_context!(),
         "mov rdi, rsp",
         "call {timer_handler}",
@@ -68,56 +75,78 @@ extern "x86-interrupt" fn timer_interrupt(_frame: InterruptStackFrame) {
 }
 
 extern "x86-interrupt" fn lapic_error(_frame: InterruptStackFrame) {
-    serial_println!("Local APIC error!");
+    error!("Local APIC error!");
     super::apic::end_of_interrupt();
 }
 
 extern "x86-interrupt" fn spurious_interrupt(_frame: InterruptStackFrame) {
-    serial_println!("Received spurious interrupt!");
+    error!("Received spurious interrupt!");
     super::apic::end_of_interrupt();
 }
 
 extern "x86-interrupt" fn segment_not_present(frame: InterruptStackFrame, error_code: u64) {
-    serial_println!("Exception: Segment Not Present\n{:#?}", frame);
-    serial_println!("Error Code: {:#x}", error_code);
+    error!("Exception: Segment Not Present\n{:#?}", frame);
+    error!("Error Code: {:#x}", error_code);
     panic!("Unrecoverable fault occured, halting!");
 }
 
 extern "x86-interrupt" fn general_protection_fault(frame: InterruptStackFrame, error_code: u64) {
-    serial_println!("Exception: General Protection Fault\n{:#?}", frame);
-    serial_println!("Error Code: {:#x}", error_code);
+    error!("Exception: General Protection Fault\n{:#?}", frame);
+    error!("Error Code: {:#x}", error_code);
     x86_64::instructions::hlt();
 }
 
 extern "x86-interrupt" fn invalid_opcode(frame: InterruptStackFrame) {
-    serial_println!("Exception: Invalid Opcode\n{:#?}", frame);
+    error!("Exception: Invalid Opcode\n{:#?}", frame);
     x86_64::instructions::hlt();
 }
 
 extern "x86-interrupt" fn breakpoint(frame: InterruptStackFrame) {
-    serial_println!("Exception: Breakpoint\n{:#?}", frame);
+    error!("Exception: Breakpoint\n{:#?}", frame);
 }
 
 extern "x86-interrupt" fn double_fault(frame: InterruptStackFrame, error_code: u64) -> ! {
-    serial_println!("Exception: Double Fault\n{:#?}", frame);
-    serial_println!("Error Code: {:#x}", error_code);
+    error!("Exception: Double Fault\n{:#?}", frame);
+    error!("Error Code: {:#x}", error_code);
     panic!("Unrecoverable fault occured, halting!");
 }
 
 extern "x86-interrupt" fn page_fault(frame: InterruptStackFrame, error_code: PageFaultErrorCode) {
-    serial_println!("Exception: Page Fault\n{:#?}", frame);
-    serial_println!("Error Code: {:#x}", error_code);
+    error!("Exception: Page Fault\n{:#?}", frame);
+    error!("Error Code: {:#x}", error_code);
     match Cr2::read() {
         Ok(address) => {
-            serial_println!("Fault Address: {:#x}", address);
+            error!("Fault Address: {:#x}", address);
         }
         Err(error) => {
-            serial_println!("Invalid virtual address: {:?}", error);
+            error!("Invalid virtual address: {:?}", error);
         }
     }
-    serial_println!("{:#?}", error_code);
+    error!("{:#?}", error_code);
 
     x86_64::instructions::hlt();
+}
+
+#[unsafe(naked)]
+extern "x86-interrupt" fn keyboard_interrupt(frame: InterruptStackFrame) {
+    fn inner_keyboard_handler() {
+        let mut port = PortReadOnly::new(0x60);
+        SCANCODES.push(unsafe { port.read() }).unwrap();
+        super::apic::end_of_interrupt();
+    }
+
+    core::arch::naked_asm!(
+        "cli",
+        crate::push_context!(),
+        "call {inner_keyboard_handler}",
+        crate::pop_context!(),
+        "iretq",
+        inner_keyboard_handler = sym inner_keyboard_handler,
+    );
+}
+
+extern "x86-interrupt" fn mouse_interrupt(frame: InterruptStackFrame) {
+    super::apic::end_of_interrupt();
 }
 
 pub fn init() {
