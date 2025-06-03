@@ -6,6 +6,7 @@ use x86_64::registers::rflags::RFlags;
 use crate::arch::gdt::Selectors;
 use crate::errno::Errno;
 use crate::fs::syscall::sys_poll;
+use crate::proc::sched::get_current_context;
 use crate::time::PosixTimeSpec;
 
 use super::nr::{PollFd, SYS_ARCH_PRCTL, SYS_CLOCK_GETTIME, SYS_POLL};
@@ -38,10 +39,10 @@ pub fn sys_clock_gettime(which: usize, ptr: *mut PosixTimeSpec) -> usize {
     0
 }
 
-fn syscall_handler(regs: &mut ContextArch) -> &mut ContextArch {
+fn syscall_handler(regs: &mut ContextArch, user_ptr: *mut ContextArch) -> &mut ContextArch {
     regs.rip = regs.rcx;
     regs.rflags = regs.r11;
-    regs.rsp = unsafe { (regs as *mut ContextArch).add(1) } as usize;
+    regs.rsp = unsafe { user_ptr.add(1) } as usize;
     let (cs, ds) = Selectors::get_user_segments();
     regs.cs = cs.0 as usize;
     regs.ss = ds.0 as usize;
@@ -69,17 +70,46 @@ fn syscall_handler(regs: &mut ContextArch) -> &mut ContextArch {
     return regs;
 }
 
+unsafe extern "C" fn copy_stack_context(dst: usize, src: usize, len: usize) -> usize {
+    core::ptr::copy_nonoverlapping(src as *const u8, dst as *mut u8, len);
+    dst
+}
+
+unsafe extern "C" fn switch_to_syscall_stack() -> usize {
+    get_current_context().read().syscall_stack.data()
+}
+
 #[unsafe(naked)]
 unsafe extern "C" fn syscall_exception() {
     core::arch::naked_asm!(
+        "cli",
         "sub rsp, 0x28",
         crate::push_context!(),
+        "mov r15, rsp",
+        // switch to kernel stack
+        "call {switch_to_syscall_stack}",
+        "sub rax, 0xa0",
+        "mov rsp, rax",
         "mov rdi, rsp",
+        "mov rsi, r15",
+        "mov rdx, 0xa0",
+        "call {copy_stack_context}",
+        // syscall
+        "mov rdi, rax",
+        "mov rsi, r15",
         "call {syscall_handler}",
+        "mov rsp, rax",
+        // switch to user stack
+        "mov rdi, r15",
+        "mov rsi, rsp",
+        "mov rdx, 0xa0",
+        "call {copy_stack_context}",
         "mov rsp, rax",
         crate::pop_context!(),
         "add rsp, 0x28",
         "sysretq",
+        switch_to_syscall_stack = sym switch_to_syscall_stack,
+        copy_stack_context = sym copy_stack_context,
         syscall_handler = sym syscall_handler,
     );
 }

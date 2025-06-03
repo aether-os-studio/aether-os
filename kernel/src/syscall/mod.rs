@@ -1,9 +1,7 @@
-use mm::sys_brk;
-use mm::sys_mmap;
-use mm::sys_munmap;
 use rmm::Arch;
 
 mod mm;
+use mm::*;
 
 use crate::errno::Errno;
 

@@ -309,7 +309,9 @@ impl ArchContext for ContextRegs {
     }
 
     fn make_current(&self) {
-        unsafe { FS::write_base(VirtAddr::new(self.fsbase as u64)) };
+        unsafe {
+            FS::write_base(VirtAddr::new(self.fsbase as u64));
+        };
 
         // page table
         unsafe {
@@ -351,6 +353,6 @@ impl ArchContext for ContextRegs {
     }
 }
 
-pub unsafe fn arch_to_user_mode(regs_addr: VirtualAddress) {
+pub unsafe fn arch_to_user_mode(regs_addr: VirtualAddress) -> ! {
     core::arch::asm!("mov rsp, {}", crate::pop_context!(), "iretq", in(reg) regs_addr.data(), options(nostack, noreturn));
 }

@@ -87,16 +87,16 @@ unsafe extern "C" fn kmain() -> ! {
 fn init() -> ! {
     info!("init thread is running");
 
-    info!("Ready to run /bin/bash");
+    info!("Ready to run /usr/bin/init");
 
     sys_execve(
-        CString::new("/bin/bash").unwrap().as_ptr(),
+        CString::new("/usr/bin/init").unwrap().as_ptr(),
         core::ptr::null(),
         core::ptr::null(),
     )
-    .expect("Failed to execute /bin/bash");
+    .expect("Failed to execute /usr/bin/init");
 
-    error!("Failed to run /bin/bash");
+    error!("Failed to run /usr/bin/init");
 
     hcf()
 }

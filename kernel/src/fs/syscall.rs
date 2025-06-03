@@ -205,6 +205,8 @@ pub const S_ISVTX: usize = 0001000;
 
 // todo: inode_id
 
+static mut INO: usize = 1;
+
 pub fn sys_fstat(fd: usize, buf: usize) -> Result<usize> {
     let fd_manager = get_file_descriptor_manager().ok_or(Errno::ENOENT)?;
     let (inode, mode, offset) = fd_manager.file_descriptors.get(&fd).ok_or(Errno::EBADF)?;
@@ -212,8 +214,6 @@ pub fn sys_fstat(fd: usize, buf: usize) -> Result<usize> {
     let stat_buf = buf as *mut PosixStat;
 
     let info = inode.read().get_info();
-
-    static mut INO: usize = 1;
 
     unsafe {
         (*stat_buf) = PosixStat::default();
@@ -240,8 +240,6 @@ pub fn sys_stat(path: *const core::ffi::c_char, buf: usize) -> Result<usize> {
     let stat_buf = buf as *mut PosixStat;
 
     let info = inode.read().get_info();
-
-    static mut INO: usize = 1;
 
     unsafe {
         (*stat_buf) = PosixStat::default();

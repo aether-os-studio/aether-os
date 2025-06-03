@@ -12,11 +12,16 @@ $(call USER_VARIABLE,KARCH,x86_64)
 $(call USER_VARIABLE,QEMUFLAGS,-m 4G -cpu max -serial stdio -smp 2 -net none)
 
 $(call USER_VARIABLE,DEBUG,0)
+$(call USER_VARIABLE,KVM,0)
 
 export ARCH := $(KARCH)
 
 ifeq ($(DEBUG), 1)
 override QEMUFLAGS += -s -S
+endif
+
+ifeq ($(KVM), 1)
+override QEMUFLAGS += --enable-kvm
 endif
 
 override IMAGE_NAME := aether-$(KARCH)
@@ -115,7 +120,7 @@ user:
 
 $(IMAGE_NAME).hdd: limine/limine kernel
 	rm -f $(IMAGE_NAME).hdd
-	dd if=/dev/zero bs=1M count=0 seek=256 of=$(IMAGE_NAME).hdd
+	dd if=/dev/zero bs=1M count=0 seek=1024 of=$(IMAGE_NAME).hdd
 	sgdisk $(IMAGE_NAME).hdd -n 1:2048 -t 1:ef00
 	mformat -i $(IMAGE_NAME).hdd@@1M
 	mmd -i $(IMAGE_NAME).hdd@@1M ::/EFI ::/EFI/BOOT ::/boot ::/boot/limine

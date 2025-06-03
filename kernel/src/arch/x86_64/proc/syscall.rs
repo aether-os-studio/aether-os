@@ -1,3 +1,8 @@
+use x86_64::{
+    VirtAddr,
+    registers::segmentation::{FS, Segment64},
+};
+
 use crate::{errno::Errno, proc::sched::get_current_context};
 
 pub const ARCH_SET_GS: usize = 0x1001;
@@ -10,7 +15,7 @@ pub fn sys_arch_prctl(cmd: usize, arg: usize) -> usize {
         ARCH_SET_GS => 0,
         ARCH_SET_FS => {
             get_current_context().write().arch_mut().set_fs(arg);
-            get_current_context().read().arch().make_current();
+            unsafe { FS::write_base(VirtAddr::new(arg as u64)) };
             0
         }
         ARCH_GET_GS => 0,

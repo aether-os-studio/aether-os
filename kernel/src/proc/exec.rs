@@ -1,6 +1,5 @@
 use alloc::string::ToString;
 use alloc::{collections::btree_map::BTreeMap, ffi::CString, vec::Vec};
-use goblin::elf::ProgramHeader;
 use rmm::{Arch, PageFlags, PageMapper, VirtualAddress};
 
 use core::ffi::CStr;
@@ -328,7 +327,7 @@ pub fn execve_from_buffer(
         .insert(AtType::PHNUM as u8, elf_header.header.e_phnum as usize);
     proc_init_info
         .auxv
-        .insert(AtType::PHENT as u8, size_of::<ProgramHeader>());
+        .insert(AtType::PHENT as u8, elf_header.header.e_phentsize as usize);
     proc_init_info
         .auxv
         .insert(AtType::PAGESZ as u8, CurrentMMArch::PAGE_SIZE);
@@ -359,10 +358,10 @@ pub fn execve_from_buffer(
         );
 
         let stack_point = get_current_context().read().arch.address();
-        unsafe { mapper.make_current() };
-        unsafe { arch_to_user_mode(stack_point) };
-
-        return Ok(());
+        unsafe {
+            mapper.make_current();
+            arch_to_user_mode(stack_point)
+        };
     }
 
     Err(Errno::ENOMEM)
