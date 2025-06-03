@@ -1,14 +1,18 @@
 use core::hint::spin_loop;
 
+use alloc::collections::btree_map::BTreeMap;
+use spin::RwLock;
+
 use crate::{
-    arch::{arch_disable_intr, arch_enable_intr, arch_yield, proc::arch_get_cpu_id},
+    arch::{arch_disable_intr, arch_enable_intr, proc::arch_get_cpu_id},
     fs::fd::FILE_DESCRIPTOR_MANAGERS,
+    proc::sched::SCHEDULER,
     syscall::Result,
 };
 
 use super::{
-    ContextStatus, PosixOldUtsName,
-    sched::{SCHEDULER, SCHEDULER_ENABLED, get_current_context},
+    PosixOldUtsName,
+    sched::{SCHEDULER_ENABLED, get_current_context},
 };
 
 pub fn sys_fork(regs_ptr: usize) -> Result<usize> {
@@ -18,14 +22,26 @@ pub fn sys_fork(regs_ptr: usize) -> Result<usize> {
     res
 }
 
+pub static EXIT_CODE_MAP: RwLock<BTreeMap<usize, usize>> = RwLock::new(BTreeMap::new());
+
 pub fn sys_exit(code: usize) -> ! {
     let context = get_current_context();
 
-    context.write().code = code;
-    context.write().status = ContextStatus::Died;
+    EXIT_CODE_MAP.write().insert(context.read().get_pid(), code);
+
+    FILE_DESCRIPTOR_MANAGERS
+        .lock()
+        .remove(&context.read().get_pid())
+        .unwrap();
+
+    SCHEDULER
+        .lock()
+        .currents
+        .remove(&arch_get_cpu_id())
+        .unwrap();
 
     loop {
-        arch_yield();
+        arch_enable_intr();
         spin_loop();
     }
 }
@@ -39,28 +55,17 @@ pub fn sys_wait4(
     let cpu_id = arch_get_cpu_id();
 
     loop {
-        if let Some(context) = SCHEDULER.lock().currents.get(&cpu_id) {
-            if context.read().status == ContextStatus::Died {
-                arch_disable_intr();
+        if let Some(exit_code) = EXIT_CODE_MAP.write().remove(&pid) {
+            arch_disable_intr();
 
-                FILE_DESCRIPTOR_MANAGERS
-                    .lock()
-                    .remove(&context.read().get_pid())
-                    .unwrap();
+            unsafe { core::ptr::write_volatile(status_ptr as *mut u32, exit_code as u32) };
 
-                let idx = SCHEDULER.lock().currents.remove(&cpu_id);
-
-                unsafe { core::ptr::write_volatile(status_ptr as *mut usize, context.read().code) };
-
-                return Ok(pid);
-            }
-
-            arch_enable_intr();
-
-            spin_loop();
-        } else {
-            return Err(crate::errno::Errno::ENOENT);
+            return Ok(pid);
         }
+
+        arch_enable_intr();
+
+        spin_loop();
     }
 }
 

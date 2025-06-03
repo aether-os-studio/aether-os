@@ -90,4 +90,8 @@ impl IndexNode for PipeIndexNode {
         info.inode_type = IndexNodeType::Dev;
         info
     }
+
+    fn ioctl(&self, _cmd: usize, _arg: usize) -> crate::syscall::Result<usize> {
+        Ok(0)
+    }
 }

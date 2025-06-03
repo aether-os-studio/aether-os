@@ -1,12 +1,10 @@
-use core::hint::spin_loop;
-
-use alloc::{string::String, sync::Arc};
+use alloc::{string::String, sync::Arc, vec::Vec};
 use fat::Fat32Volume;
 use spin::{Lazy, Mutex, RwLock};
 use vfs::{IndexNode, IndexNodeRef, fake::FakeFS, partition::PartitionIndexNode};
 
 use crate::{
-    arch::{arch_disable_intr, arch_enable_intr},
+    arch::{arch_disable_intr, arch_enable_intr, arch_yield},
     drivers::{
         base::input::BYTES, block::partition::PARTITION_DEVICES, display::FRAMEBUFFER_REQUEST,
         term::TERMINAL,
@@ -411,36 +409,57 @@ impl IndexNode for StdioIndexNode {
 
     fn read_at(&self, _offset: usize, buf: &mut [u8]) -> crate::syscall::Result<usize> {
         let mut bytes_written = 0;
-        let echo = get_current_context().read().termios.c_lflag & (ECHO as u32) != 0;
-        let icanon = get_current_context().read().termios.c_lflag & (ICANON as u32) != 0;
+        let ctx = get_current_context();
+        let echo = ctx.read().termios.c_lflag & (ECHO as u32) != 0;
+        let icanon = ctx.read().termios.c_lflag & (ICANON as u32) != 0;
+        let mut line_buffer = Vec::new();
 
         loop {
-            let bytes = BYTES.pop();
-            if let Some(byte) = bytes {
-                buf[bytes_written] = byte;
-                bytes_written += 1;
+            let byte = BYTES.pop();
 
-                if echo {
-                    if byte == 8 && bytes_written >= 1 {
-                        serial_print!("{}", byte as char);
-                        print!("{}", byte as char);
-                        bytes_written -= 1;
-                    } else {
-                        let _ = self.write_at(0, &[byte]);
+            if let Some(byte) = byte {
+                if icanon {
+                    match byte {
+                        b'\n' => {
+                            line_buffer.push(byte);
+                            buf[bytes_written..bytes_written + line_buffer.len()]
+                                .copy_from_slice(&line_buffer);
+                            bytes_written += line_buffer.len();
+                            break;
+                        }
+                        8 => {
+                            if !line_buffer.is_empty() {
+                                line_buffer.pop();
+                                if echo {
+                                    self.write_at(0, &[8])?; // 回显退格效果
+                                }
+                            }
+                            continue;
+                        }
+                        _ => {
+                            line_buffer.push(byte);
+                            if echo {
+                                self.write_at(0, &[byte])?;
+                            }
+                        }
+                    }
+                } else {
+                    buf[bytes_written] = byte;
+                    bytes_written += 1;
+                    if echo {
+                        self.write_at(0, &[byte])?;
                     }
                 }
 
-                if bytes_written >= buf.len() || (icanon && byte == b'\n') {
+                if bytes_written >= buf.len() {
                     break;
                 }
+            } else {
+                arch_enable_intr();
+                arch_yield();
+                arch_disable_intr();
             }
-
-            arch_enable_intr();
-
-            spin_loop();
         }
-
-        arch_disable_intr();
 
         Ok(bytes_written)
     }

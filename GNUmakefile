@@ -143,6 +143,8 @@ endif
 	mcopy -s -i $(IMAGE_NAME).hdd@@1M user/rootfs-$(ARCH)/lib ::/
 	mcopy -s -i $(IMAGE_NAME).hdd@@1M user/rootfs-$(ARCH)/etc ::/
 	mcopy -s -i $(IMAGE_NAME).hdd@@1M user/rootfs-$(ARCH)/usr ::/
+	mcopy -s -i $(IMAGE_NAME).hdd@@1M user/rootfs-$(ARCH)/var ::/
+	mcopy -s -i $(IMAGE_NAME).hdd@@1M user/rootfs-$(ARCH)/root ::/
 
 .PHONY: clean
 clean:

@@ -135,14 +135,14 @@ pub unsafe fn calibrate_timer() {
     let hpet_clock_speed = HPET.clock_speed() as u64;
     let hpet_tick_per_ms = 1_000_000_000_000 / hpet_clock_speed;
 
-    for _ in 0..50 {
+    for _ in 0..5 {
         let next_ms = HPET.get_counter() + hpet_tick_per_ms;
         lapic.set_timer_initial(!0);
         while HPET.get_counter() < next_ms {}
         lapic_total_ticks += !0 - lapic.timer_current();
     }
 
-    let average_clock_per_ms = lapic_total_ticks / 50;
+    let average_clock_per_ms = lapic_total_ticks / 5;
     serial_println!("Calibrated clock per ms: {}", average_clock_per_ms);
 
     lapic.set_timer_mode(TimerMode::Periodic);

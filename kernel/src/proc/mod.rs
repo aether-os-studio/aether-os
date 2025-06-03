@@ -68,12 +68,6 @@ pub struct ContextMemoryMappings {
     pub brk_end: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum ContextStatus {
-    Normal,
-    Died,
-}
-
 /// 最小调度单位
 pub struct Context {
     pid: usize,
@@ -87,7 +81,6 @@ pub struct Context {
     signal: u64,
     blocked: u64,
     signal_stack: Option<SignalStack>,
-    status: ContextStatus,
     pub code: usize,
     pub memory_mappings: ContextMemoryMappings,
     pub termios: Termios,
@@ -110,7 +103,7 @@ pub struct PosixOldUtsName {
 
 impl PosixOldUtsName {
     pub fn new() -> Self {
-        const SYS_NAME: &[u8] = b"Linux";
+        const SYS_NAME: &[u8] = b"AetherOS";
         const NODENAME: &[u8] = b"AetherOS";
         const RELEASE: &[u8] = env!("CARGO_PKG_VERSION").as_bytes();
         const VERSION: &[u8] = env!("CARGO_PKG_VERSION").as_bytes();
@@ -185,7 +178,6 @@ impl Context {
             signal: 0,
             blocked: 0,
             signal_stack: None,
-            status: ContextStatus::Normal,
             code: 0,
             memory_mappings: Default::default(),
             termios: Default::default(),
@@ -343,7 +335,6 @@ impl Context {
             signal: 0,
             blocked: 0,
             signal_stack: None,
-            status: ContextStatus::Normal,
             code: 0,
             memory_mappings: Default::default(),
             termios: Default::default(),

@@ -160,6 +160,10 @@ impl IndexNode for Fat32Volume {
         self.open(name)
     }
 
+    fn ioctl(&self, _cmd: usize, _arg: usize) -> Result<usize> {
+        Ok(0)
+    }
+
     fn getdents(&self, dents: &mut [Dirent]) -> Result<()> {
         Ok(())
     }
@@ -250,6 +254,14 @@ impl IndexNode for Fat32Dir {
         }
         self.open(name)
     }
+
+    fn ioctl(&self, _cmd: usize, _arg: usize) -> Result<usize> {
+        Ok(0)
+    }
+
+    fn getdents(&self, dents: &mut [Dirent]) -> Result<()> {
+        Ok(())
+    }
 }
 
 pub struct Fat32File {
@@ -338,6 +350,10 @@ impl IndexNode for Fat32File {
         ref_to_mut(self.file.as_ref()).flush().unwrap();
 
         Ok(size)
+    }
+
+    fn ioctl(&self, _cmd: usize, _arg: usize) -> Result<usize> {
+        Ok(0)
     }
 }
 
