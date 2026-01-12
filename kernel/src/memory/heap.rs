@@ -1,7 +1,4 @@
-use crate::{
-    arch::{CurrentRmmArch, rmm::page_flags},
-    init::memory::PAGE_SIZE,
-};
+use crate::{arch::CurrentRmmArch, init::memory::PAGE_SIZE};
 use good_memory_allocator::SpinLockedAllocator;
 use rmm::{PageFlags, PageMapper, VirtualAddress};
 

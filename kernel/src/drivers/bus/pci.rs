@@ -1,11 +1,11 @@
 use core::fmt::Display;
 
-use acpi::{PciAddress, platform::PciConfigRegions, sdt::mcfg::Mcfg};
+use acpi::{PciAddress, platform::PciConfigRegions};
 use alloc::{alloc::Global, vec::Vec};
 use pci_types::{
-    Bar, CommandRegister, ConfigRegionAccess, DeviceId, DeviceRevision, EndpointHeader, HeaderType,
-    Interface, MAX_BARS, PciHeader, PciPciBridgeHeader, SubsystemId, SubsystemVendorId, VendorId,
-    device_type::DeviceType,
+    Bar, BaseClass, CommandRegister, ConfigRegionAccess, DeviceId, DeviceRevision, EndpointHeader,
+    HeaderType, Interface, MAX_BARS, PciHeader, PciPciBridgeHeader, SubClass, SubsystemId,
+    SubsystemVendorId, VendorId, device_type::DeviceType,
 };
 use rmm::{Arch, PageFlags, PageMapper, PhysicalAddress, VirtualAddress};
 use spin::Mutex;
@@ -70,11 +70,13 @@ impl ConfigRegionAccess for PciAccess<'_> {
 #[derive(Debug)]
 pub struct PciDevice {
     pub address: PciAddress,
+    pub class: BaseClass,
+    pub sub_class: SubClass,
+    pub interface: Interface,
     pub vendor_id: VendorId,
     pub device_id: DeviceId,
     pub subsystem_vendor_id: SubsystemVendorId,
     pub subsystem_device_id: SubsystemId,
-    pub interface: Interface,
     pub revision: DeviceRevision,
     pub device_type: DeviceType,
     pub bars: [Option<Bar>; MAX_BARS],
@@ -190,11 +192,13 @@ impl<'a> PciResolver<'a> {
 
                 let device = PciDevice {
                     address,
+                    class,
+                    sub_class,
+                    interface,
                     vendor_id,
                     device_id,
                     subsystem_vendor_id,
                     subsystem_device_id,
-                    interface,
                     device_type,
                     revision,
                     bars,

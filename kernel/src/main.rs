@@ -104,6 +104,8 @@ extern "C" fn initial_kernel_thread() -> ! {
 
     crate::drivers::bus::pci::init();
 
+    crate::drivers::usb::init();
+
     loop {
         spin_loop();
     }

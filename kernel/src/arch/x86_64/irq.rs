@@ -227,7 +227,7 @@ pub static IDT: Lazy<InterruptDescriptorTable> = Lazy::new(|| {
 });
 
 #[unsafe(no_mangle)]
-extern "C" fn do_timer_interrupt(regs: *mut Ptrace) {
+extern "C" fn do_timer_interrupt(_regs: *mut Ptrace) {
     schedule();
 }
 

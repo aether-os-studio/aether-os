@@ -10,3 +10,4 @@ pub mod logger;
 pub mod ns16550;
 #[cfg(target_arch = "aarch64")]
 pub mod pl011;
+pub mod usb;
