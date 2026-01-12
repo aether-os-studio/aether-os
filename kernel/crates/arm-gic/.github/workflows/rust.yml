@@ -1,0 +1,56 @@
+name: Rust
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    permissions:
+      checks: write
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      matrix:
+        target:
+          - aarch64-unknown-none
+          - armv7a-none-eabi
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install ${{ matrix.target }} toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+      - name: Build
+        run: cargo build --target ${{ matrix.target }}
+      - name: Run clippy
+        uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --target ${{ matrix.target }}
+
+  test:
+    permissions:
+      checks: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Test on host
+        run: cargo test --features=fakes
+      - name: Run clippy
+        uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --features=fakes
+
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Format Rust code
+        run: cargo fmt --all -- --check

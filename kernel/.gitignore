@@ -1,0 +1,8 @@
+/build
+/Cargo.lock
+/edk2-ovmf
+/limine
+/target
+/*.elf
+/*.img
+/*.dtb

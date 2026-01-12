@@ -1,0 +1,25 @@
+[package]
+name = "kernel"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+acpi = { version = "6.0.1", default-features = false }
+bit_field = "0.10.3"
+good_memory_allocator = "0.1.7"
+limine = "0.5.0"
+log = "0.4.29"
+os-terminal = "0.6.15"
+rmm = { path = "crates/rmm", default-features = false }
+spin = "0.10.0"
+
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+uart_16550 = "0.4.0"
+x2apic = { path = "crates/x2apic-rs" }
+x86_64 = "0.15.4"
+
+[target.'cfg(target_arch = "aarch64")'.dependencies]
+aarch64 = "0.0.14"
+arm-gic = { path = "crates/arm-gic" }
+arm-pl011-uart = "0.4.0"
+fdt-parser = "0.5.1"

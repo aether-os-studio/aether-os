@@ -1,0 +1,11 @@
+pub mod acpi;
+pub mod device;
+#[cfg(not(target_arch = "x86_64"))]
+pub mod dtb;
+pub mod fbterm;
+pub mod framebuffer;
+pub mod logger;
+#[cfg(target_arch = "x86_64")]
+pub mod ns16550;
+#[cfg(target_arch = "aarch64")]
+pub mod pl011;
