@@ -85,6 +85,19 @@ impl IrqRegsArch for Ptrace {
     fn get_syscall_args(&self) -> (u64, u64, u64, u64, u64, u64) {
         (self.x0, self.x1, self.x2, self.x3, self.x4, self.x5)
     }
+
+    fn get_args(&self) -> (u64, u64, u64, u64, u64, u64) {
+        (self.x0, self.x1, self.x2, self.x3, self.x4, self.x5)
+    }
+
+    fn set_args(&mut self, args: (u64, u64, u64, u64, u64, u64)) {
+        self.x0 = args.0;
+        self.x1 = args.1;
+        self.x2 = args.2;
+        self.x3 = args.3;
+        self.x4 = args.4;
+        self.x6 = args.5;
+    }
 }
 
 pub struct AArch64IrqArch;

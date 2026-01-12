@@ -2,6 +2,8 @@
 #![no_main]
 #![allow(unsafe_op_in_unsafe_fn)]
 #![feature(abi_x86_interrupt)]
+#![feature(allocator_api)]
+#![feature(ptr_as_ref_unchecked)]
 #![feature(sync_unsafe_cell)]
 
 extern crate alloc;
@@ -20,7 +22,7 @@ static BASE_REVISION: BaseRevision = BaseRevision::with_revision(3);
 #[used]
 #[unsafe(link_section = ".requests")]
 static STACK_SIZE_REQUEST: StackSizeRequest =
-    StackSizeRequest::new().with_size(crate::consts::STACK_SIZE as u64);
+    StackSizeRequest::new().with_size(consts::STACK_SIZE as u64);
 
 #[used]
 #[unsafe(link_section = ".requests_start_marker")]
@@ -35,6 +37,7 @@ mod drivers;
 mod init;
 mod memory;
 mod smp;
+mod task;
 
 use core::{hint::spin_loop, panic::PanicInfo};
 
@@ -70,26 +73,38 @@ mod kernel_executable_offsets {
 extern "C" fn kmain() -> ! {
     CurrentIrqArch::disable_global_irq();
 
-    crate::memory::heap::init();
+    memory::heap::init();
 
     #[cfg(not(target_arch = "x86_64"))]
     unsafe {
-        crate::drivers::dtb::init()
+        drivers::dtb::init()
     };
 
     #[cfg(target_arch = "aarch64")]
-    crate::drivers::pl011::init();
+    drivers::pl011::init();
 
-    crate::drivers::framebuffer::init();
+    drivers::framebuffer::init();
 
-    crate::drivers::logger::init();
+    drivers::logger::init();
 
-    crate::arch::early_init();
+    arch::early_init();
+
+    task::init();
 
     info!("Kernel initialized");
 
     loop {
         CurrentIrqArch::enable_global_irq();
+        spin_loop();
+    }
+}
+
+extern "C" fn initial_kernel_thread() -> ! {
+    info!("Initial kernel thread is running");
+
+    crate::drivers::bus::pci::init();
+
+    loop {
         spin_loop();
     }
 }

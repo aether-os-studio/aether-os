@@ -12,26 +12,20 @@ use crate::{
         gdt::CpuInfo,
         init_sse,
         irq::IrqArch,
-        x86_64::irq::IDT,
     },
     init::memory::KERNEL_PAGE_TABLE_PHYS,
-    smp::{BSP_CPUARCHID, CPU_COUNT, MP_REQUEST},
+    smp::{BSP_CPUARCHID, CPU_COUNT, CPUID_TO_ARCHID, MP_REQUEST},
+    task::sched::{SCHEDULERS, Scheduler},
 };
 
 unsafe extern "C" {
     unsafe fn _ap_start(cpu: &Cpu) -> !;
 }
 
-pub static LAPICID_TO_CPUID: Mutex<BTreeMap<usize, usize>> = Mutex::new(BTreeMap::new());
-
 pub static LAPICID_TO_CPUINFO: Mutex<BTreeMap<usize, CpuInfo>> = Mutex::new(BTreeMap::new());
 
 pub fn get_lapicid() -> usize {
     unsafe { LAPIC.lock().as_mut().unwrap().id() as usize }
-}
-
-pub fn get_cpuid_by_archid(archid: usize) -> usize {
-    *LAPICID_TO_CPUID.lock().get(&archid).unwrap()
 }
 
 pub fn init() {
@@ -44,13 +38,14 @@ pub fn init() {
         mp_response.cpus().len(),
         core::sync::atomic::Ordering::SeqCst,
     );
-    for cpu in mp_response.cpus() {
-        LAPICID_TO_CPUID
-            .lock()
-            .insert(cpu.lapic_id as usize, cpu.id as usize);
+    for (i, cpu) in mp_response.cpus().iter().enumerate() {
         LAPICID_TO_CPUINFO
             .lock()
             .insert(cpu.lapic_id as usize, CpuInfo::default());
+        SCHEDULERS
+            .lock()
+            .insert(cpu.lapic_id as usize, Scheduler::new());
+        CPUID_TO_ARCHID.lock().insert(i, cpu.lapic_id as usize);
         if cpu.lapic_id == mp_response.bsp_lapic_id() {
             continue;
         }

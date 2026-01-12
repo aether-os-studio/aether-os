@@ -24,8 +24,8 @@ impl Default for CpuInfo {
 
 impl CpuInfo {
     #[inline]
-    pub fn set_ring0_rsp(&mut self, rsp: VirtAddr) {
-        self.tss.privilege_stack_table[0] = rsp;
+    pub fn set_ring0_rsp(&mut self, rsp: u64) {
+        self.tss.privilege_stack_table[0] = VirtAddr::new(rsp);
     }
 }
 

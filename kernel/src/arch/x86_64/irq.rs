@@ -4,7 +4,10 @@ use x86_64::{
     structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode},
 };
 
-use crate::arch::irq::{IrqArch, IrqRegsArch};
+use crate::{
+    arch::irq::{IrqArch, IrqRegsArch},
+    task::schedule,
+};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default)]
@@ -31,6 +34,58 @@ pub struct Ptrace {
     rflags: u64,
     rsp: u64,
     ss: u64,
+}
+
+#[macro_export]
+macro_rules! push_context {
+    () => {
+        concat!(
+            r#"
+            sub rsp, 0x10
+            push rax
+            push rbp
+            push rdi
+            push rsi
+            push rdx
+            push rcx
+            push rbx
+            push r8
+            push r9
+            push r10
+            push r11
+            push r12
+            push r13
+            push r14
+            push r15
+            "#,
+        )
+    };
+}
+
+#[macro_export]
+macro_rules! pop_context {
+    () => {
+        concat!(
+            r#"
+            pop r15
+            pop r14
+            pop r13
+            pop r12
+            pop r11
+            pop r10
+            pop r9
+            pop r8
+            pop rbx
+            pop rcx
+            pop rdx
+            pop rsi
+            pop rdi
+            pop rbp
+            pop rax
+            add rsp, 0x10
+			"#
+        )
+    };
 }
 
 impl IrqRegsArch for Ptrace {
@@ -73,6 +128,19 @@ impl IrqRegsArch for Ptrace {
 
     fn get_syscall_args(&self) -> (u64, u64, u64, u64, u64, u64) {
         (self.rdi, self.rsi, self.rdx, self.r10, self.r8, self.r9)
+    }
+
+    fn get_args(&self) -> (u64, u64, u64, u64, u64, u64) {
+        (self.rdi, self.rsi, self.rdx, self.rcx, self.r8, self.r9)
+    }
+
+    fn set_args(&mut self, args: (u64, u64, u64, u64, u64, u64)) {
+        self.rdi = args.0;
+        self.rsi = args.1;
+        self.rdx = args.2;
+        self.rcx = args.3;
+        self.r8 = args.4;
+        self.r9 = args.5;
     }
 }
 
@@ -158,7 +226,21 @@ pub static IDT: Lazy<InterruptDescriptorTable> = Lazy::new(|| {
     idt
 });
 
-pub extern "x86-interrupt" fn timer_interrupt(_frame: InterruptStackFrame) {}
+#[unsafe(no_mangle)]
+extern "C" fn do_timer_interrupt(regs: *mut Ptrace) {
+    schedule();
+}
+
+#[unsafe(naked)]
+pub extern "x86-interrupt" fn timer_interrupt(_frame: InterruptStackFrame) {
+    core::arch::naked_asm!(
+        push_context!(),
+        "mov rdi, rsp",
+        "call do_timer_interrupt",
+        pop_context!(),
+        "iretq",
+    );
+}
 
 pub fn init() {
     IDT.load();

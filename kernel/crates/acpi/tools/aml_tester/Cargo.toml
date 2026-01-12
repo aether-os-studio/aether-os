@@ -1,0 +1,12 @@
+[package]
+name = "aml_tester"
+version = "0.1.0"
+authors = ["Isaac Woods"]
+edition = "2018"
+
+[dependencies]
+acpi = { path = "../.." }
+clap = "4"
+termion = "1"
+log = "0.4"
+pci_types = "0.10"

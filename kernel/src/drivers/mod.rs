@@ -1,4 +1,5 @@
 pub mod acpi;
+pub mod bus;
 pub mod device;
 #[cfg(not(target_arch = "x86_64"))]
 pub mod dtb;

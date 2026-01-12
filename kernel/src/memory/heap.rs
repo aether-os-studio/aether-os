@@ -3,7 +3,7 @@ use crate::{
     init::memory::PAGE_SIZE,
 };
 use good_memory_allocator::SpinLockedAllocator;
-use rmm::{PageMapper, VirtualAddress};
+use rmm::{PageFlags, PageMapper, VirtualAddress};
 
 use crate::init::memory::FRAME_ALLOCATOR;
 
@@ -19,7 +19,7 @@ pub fn init() {
 
     for addr in (KERNEL_HEAP_START..(KERNEL_HEAP_START + KERNEL_HEAP_SIZE)).step_by(PAGE_SIZE) {
         let virt = VirtualAddress::new(addr);
-        let flags = unsafe { page_flags::<CurrentRmmArch>(virt) };
+        let flags = PageFlags::<CurrentRmmArch>::new().write(true);
         unsafe { mapper.map(virt, flags).unwrap().flush() };
     }
 

@@ -9,6 +9,9 @@ pub trait IrqRegsArch {
     fn get_ret_address(&self) -> u64;
     fn set_ret_address(&mut self, ret_address: u64);
 
+    fn get_args(&self) -> (u64, u64, u64, u64, u64, u64);
+    fn set_args(&mut self, args: (u64, u64, u64, u64, u64, u64));
+
     fn get_syscall_idx(&self) -> u64;
     fn get_syscall_args(&self) -> (u64, u64, u64, u64, u64, u64);
 }

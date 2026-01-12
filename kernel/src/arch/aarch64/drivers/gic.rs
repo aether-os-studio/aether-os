@@ -10,14 +10,10 @@ use rmm::{Arch, PageFlags, PageMapper, PhysicalAddress};
 use spin::Mutex;
 
 use crate::{
-    arch::{
-        CurrentRmmArch,
-        irq::IrqControllerArch,
-        smp::{get_cpuid_by_archid, get_mpidr},
-    },
+    arch::{CurrentRmmArch, irq::IrqControllerArch, smp::get_mpidr},
     drivers::acpi::ACPI_TABLES,
     init::memory::{FRAME_ALLOCATOR, PAGE_SIZE, align_down, align_up},
-    smp::{BSP_CPUARCHID, CPU_COUNT},
+    smp::{BSP_CPUARCHID, CPU_COUNT, get_cpuid_by_archid},
 };
 
 pub enum Gic<'a> {

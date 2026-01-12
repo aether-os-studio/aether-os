@@ -1,9 +1,7 @@
 use core::{arch::asm, hint::spin_loop};
 
-use alloc::collections::btree_map::BTreeMap;
 use limine::mp::Cpu;
 use rmm::{Arch, PhysicalAddress, TableKind};
-use spin::Mutex;
 
 use crate::{
     arch::{
@@ -12,23 +10,17 @@ use crate::{
         irq::IrqArch,
     },
     init::memory::KERNEL_PAGE_TABLE_PHYS,
-    smp::{BSP_CPUARCHID, CPU_COUNT, MP_REQUEST},
+    smp::{BSP_CPUARCHID, CPU_COUNT, CPUID_TO_ARCHID, MP_REQUEST, get_cpuid_by_archid},
+    task::sched::{SCHEDULERS, Scheduler},
 };
 
 unsafe extern "C" {
     unsafe fn _ap_start(cpu: &Cpu) -> !;
 }
-
-pub static MPIDR_TO_CPUID: Mutex<BTreeMap<usize, usize>> = Mutex::new(BTreeMap::new());
-
 pub fn get_mpidr() -> usize {
     let mut val: u64 = 0;
     unsafe { asm!("mrs {0}, mpidr_el1", out(reg) val) };
     val as usize & !0x80000000
-}
-
-pub fn get_cpuid_by_archid(archid: usize) -> usize {
-    *MPIDR_TO_CPUID.lock().get(&archid).unwrap()
 }
 
 pub fn init() {
@@ -41,10 +33,11 @@ pub fn init() {
             mp_response.cpus().len(),
             core::sync::atomic::Ordering::SeqCst,
         );
-        for cpu in mp_response.cpus() {
-            MPIDR_TO_CPUID
+        for (i, cpu) in mp_response.cpus().iter().enumerate() {
+            SCHEDULERS
                 .lock()
-                .insert(cpu.mpidr as usize, cpu.id as usize);
+                .insert(cpu.mpidr as usize, Scheduler::new());
+            CPUID_TO_ARCHID.lock().insert(i, cpu.mpidr as usize);
             if cpu.mpidr == mp_response.bsp_mpidr() {
                 continue;
             }
