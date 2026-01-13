@@ -1,7 +1,13 @@
-use core::ops::{Deref, DerefMut};
+use core::{
+    fmt::Display,
+    ops::{Deref, DerefMut},
+};
 
-use alloc::sync::{Arc, Weak};
-use spin::RwLock;
+use alloc::{
+    sync::{Arc, Weak},
+    vec::Vec,
+};
+use spin::{Mutex, RwLock};
 
 #[inline]
 pub const fn fls(x: u32) -> u32 {
@@ -82,7 +88,25 @@ pub struct UsbDevice {
     pub vendor_id: u16,
     pub speed: UsbDeviceSpeed,
     pub devaddr: u8,
+    pub ifaces: Vec<UsbInterfaceDescriptor>,
 }
+
+impl Display for UsbDevice {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        write!(f, "[{:04x}:{:04x}]:", self.vendor_id, self.product_id).unwrap();
+        for iface in self.ifaces.iter() {
+            write!(
+                f,
+                "\t{}:{}.{}",
+                iface.interface_class, iface.interface_subclass, iface.interface_protocol,
+            )
+            .unwrap();
+        }
+        Ok(())
+    }
+}
+
+pub static USB_DEVICES: Mutex<Vec<ArcUsbDevice>> = Mutex::new(Vec::new());
 
 pub type ArcUsbHub = Arc<RwLock<UsbHub>>;
 pub type WeakUsbHub = Weak<RwLock<UsbHub>>;
@@ -94,7 +118,7 @@ pub struct UsbHub {
     pub portcount: u8,
 }
 
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Clone, Default)]
 pub struct UsbCtrlRequest {
     pub req_type: u8,
@@ -118,7 +142,7 @@ impl DerefMut for UsbCtrlRequest {
     }
 }
 
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Debug, Clone, Copy, Default)]
 pub struct UsbDeviceDescriptor {
     pub length: u8,
@@ -150,4 +174,47 @@ impl DerefMut for UsbDeviceDescriptor {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { core::slice::from_raw_parts_mut(self as *mut _ as *mut u8, size_of::<Self>()) }
     }
+}
+
+#[repr(C, packed)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct UsbConfigDescriptor {
+    pub length: u8,
+    pub desc_type: u8,
+
+    pub total_length: u16,
+    pub num_interfaces: u8,
+    pub configuration_value: u8,
+    pub configuration: u8,
+    pub attribute: u8,
+    pub max_power: u8,
+}
+
+impl Deref for UsbConfigDescriptor {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { core::slice::from_raw_parts(self as *const _ as *const u8, size_of::<Self>()) }
+    }
+}
+
+impl DerefMut for UsbConfigDescriptor {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { core::slice::from_raw_parts_mut(self as *mut _ as *mut u8, size_of::<Self>()) }
+    }
+}
+
+#[repr(C, packed)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct UsbInterfaceDescriptor {
+    pub length: u8,
+    pub desc_type: u8,
+
+    pub interface_number: u8,
+    pub alternate_settings: u8,
+    pub num_endpoints: u8,
+    pub interface_class: u8,
+    pub interface_subclass: u8,
+    pub interface_protocol: u8,
+    pub i_interface: u8,
 }

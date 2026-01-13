@@ -1,8 +1,4 @@
-use core::{
-    hint::spin_loop,
-    num::NonZeroUsize,
-    ops::{Deref, DerefMut},
-};
+use core::{hint::spin_loop, num::NonZeroUsize};
 
 use alloc::{collections::btree_map::BTreeMap, sync::Arc, vec::Vec};
 use bit_field::BitField;
@@ -17,8 +13,9 @@ use crate::{
     drivers::bus::{
         pci::PCI_DEVICES,
         usb::{
-            ArcUsbDevice, ArcUsbHub, ArcUsbPipe, UsbCtrlRequest, UsbDevice, UsbDeviceDescriptor,
-            UsbDeviceSpeed, UsbEndpointDescriptor, UsbHcd, UsbHub, UsbPipe, usb_get_period,
+            ArcUsbDevice, ArcUsbHub, ArcUsbPipe, USB_DEVICES, UsbConfigDescriptor, UsbCtrlRequest,
+            UsbDevice, UsbDeviceDescriptor, UsbDeviceSpeed, UsbEndpointDescriptor, UsbHcd, UsbHub,
+            UsbInterfaceDescriptor, UsbPipe, usb_get_period,
         },
     },
     init::memory::{FRAME_ALLOCATOR, PAGE_SIZE, align_down, align_up},
@@ -612,6 +609,7 @@ pub type ArcXhciPipe = Arc<RwLock<XhciPipe>>;
 pub struct XhciPipe {
     slot: u8,
     epid: u8,
+    maxpacket: u16,
     ring: Mutex<XhciRing>,
 }
 
@@ -899,6 +897,85 @@ impl XhciHcd {
         self.event_wait_pipe(arc_pipe.clone())
     }
 
+    fn submit_trb_split(
+        &mut self,
+        arc_pipe: ArcXhciPipe,
+        phys: PhysicalAddress,
+        len: usize,
+        _dir_in: bool,
+    ) {
+        let pipe = arc_pipe.read();
+        let mut ring = pipe.ring.lock();
+
+        let mut offset = 0;
+        let chunk_size = pipe.maxpacket as usize;
+
+        let mut td_size = ((len + chunk_size - 1) / chunk_size).min(0x1F);
+
+        while offset < len {
+            let current_phys = phys.add(offset);
+
+            let ioc = offset + chunk_size >= len;
+
+            ring.submit_trb(|trb, cs| {
+                trb.normal(
+                    current_phys.data() as u64,
+                    chunk_size as u32,
+                    cs,
+                    td_size as u8,
+                    0,
+                    false,
+                    false,
+                    !ioc,
+                    ioc,
+                    false,
+                    false,
+                )
+            });
+
+            offset += chunk_size;
+            td_size -= 1;
+        }
+    }
+
+    pub fn xfer_normal_in(&mut self, arc_pipe: ArcXhciPipe, data: &mut [u8]) -> u8 {
+        let len = data.len();
+        let addr_unaligned = data.as_mut_ptr() as usize;
+        let addr_aligned = align_down(addr_unaligned);
+        let offset = addr_unaligned - addr_aligned;
+        let addr = VirtualAddress::new(addr_aligned);
+        let mut frame_allocator = FRAME_ALLOCATOR.lock();
+        let page_mapper = unsafe {
+            PageMapper::<CurrentRmmArch, _>::current(rmm::TableKind::Kernel, &mut *frame_allocator)
+        };
+        let (phys, _) = page_mapper.translate(addr).unwrap();
+        self.submit_trb_split(arc_pipe.clone(), phys, len, true);
+
+        let pipe = arc_pipe.read();
+        self.doorbell(pipe.slot, pipe.epid);
+        drop(pipe);
+        self.event_wait_pipe(arc_pipe.clone())
+    }
+
+    pub fn xfer_normal_out(&mut self, arc_pipe: ArcXhciPipe, data: &[u8]) -> u8 {
+        let len = data.len();
+        let addr_unaligned = data.as_ptr() as usize;
+        let addr_aligned = align_down(addr_unaligned);
+        let offset = addr_unaligned - addr_aligned;
+        let addr = VirtualAddress::new(addr_aligned);
+        let mut frame_allocator = FRAME_ALLOCATOR.lock();
+        let page_mapper = unsafe {
+            PageMapper::<CurrentRmmArch, _>::current(rmm::TableKind::Kernel, &mut *frame_allocator)
+        };
+        let (phys, _) = page_mapper.translate(addr).unwrap();
+        self.submit_trb_split(arc_pipe.clone(), phys, len, true);
+
+        let pipe = arc_pipe.read();
+        self.doorbell(pipe.slot, pipe.epid);
+        drop(pipe);
+        self.event_wait_pipe(arc_pipe.clone())
+    }
+
     pub fn configure_device(&mut self, device: ArcUsbDevice, speed: XhciSpeed) {
         let ctrlsize = match speed {
             XhciSpeed::Full => 8,
@@ -915,7 +992,7 @@ impl XhciHcd {
             device.write().ctrl_pipe = ctrl_pipe.clone();
 
             let mut request = UsbCtrlRequest::default();
-            request.req_type = 0x80 | (0x00 << 5) | (0x00);
+            request.req_type = 0x80 | (0x00 << 5) | 0x00;
             request.req = 0x06;
             request.value = 0x01 << 8;
             request.index = 0;
@@ -923,11 +1000,7 @@ impl XhciHcd {
 
             let mut descriptor = UsbDeviceDescriptor::default();
 
-            self.read_pipe(
-                ctrl_pipe.clone(),
-                Some(request.deref()),
-                Some(descriptor.deref_mut()),
-            );
+            self.read_pipe(ctrl_pipe.clone(), Some(&request), Some(&mut descriptor));
 
             let mut maxpacket = descriptor.max_packet_size_0 as u16;
             if descriptor.bcd_usb >= 0x0300 {
@@ -943,21 +1016,67 @@ impl XhciHcd {
                 device.write().ctrl_pipe = ctrl_pipe.clone();
 
                 let mut request = UsbCtrlRequest::default();
-                request.req_type = 0x80 | (0x00 << 5) | (0x00);
+                request.req_type = 0x80 | (0x00 << 5) | 0x00;
                 request.req = 0x06;
                 request.value = 0x01 << 8;
                 request.index = 0;
                 request.length = maxpacket;
 
-                self.read_pipe(
-                    ctrl_pipe.clone(),
-                    Some(request.deref()),
-                    Some(descriptor.deref_mut()),
-                );
+                self.read_pipe(ctrl_pipe.clone(), Some(&request), Some(&mut descriptor));
 
-                info!("{:#x?}", descriptor);
+                device.write().product_id = descriptor.id_product;
+                device.write().vendor_id = descriptor.id_vendor;
 
-                // TODO: find usb drivers
+                let mut config = UsbConfigDescriptor::default();
+
+                request.req_type = 0x80 | (0x00 << 5) | 0x00;
+                request.req = 0x06;
+                request.value = 0x02 << 8;
+                request.index = 0;
+                request.length = size_of::<UsbConfigDescriptor>() as u16;
+
+                self.read_pipe(ctrl_pipe.clone(), Some(&request), Some(&mut config));
+
+                let mut buffer = Vec::new();
+                buffer.resize(config.total_length as usize, 0);
+                request.length = config.total_length;
+                self.read_pipe(ctrl_pipe.clone(), Some(&request), Some(&mut buffer));
+
+                let mut interface_descriptor_start = unsafe {
+                    buffer.as_ptr().byte_add(config.length as usize)
+                        as *const UsbInterfaceDescriptor
+                };
+
+                let mut num_iface = config.num_interfaces;
+
+                let mut ptr = 0;
+                while num_iface != 0 && ptr < config.total_length as usize {
+                    let interface_descriptor =
+                        unsafe { interface_descriptor_start.as_ref_unchecked() };
+                    let interface_descriptor_len = interface_descriptor.length as usize;
+
+                    if interface_descriptor.desc_type == 0x04 {
+                        num_iface -= 1;
+                        device.write().ifaces.push(interface_descriptor.clone());
+                    }
+
+                    interface_descriptor_start =
+                        unsafe { interface_descriptor_start.byte_add(interface_descriptor_len) };
+                    ptr += interface_descriptor_len;
+                }
+
+                drop(buffer);
+
+                CurrentTimeArch::delay(100 * 1000000);
+
+                request.req_type = 0x00 | (0x00 << 5) | 0x00;
+                request.req = 0x09;
+                request.value = config.configuration_value as u16;
+                request.index = 0;
+                request.length = 0;
+                self.write_pipe(ctrl_pipe.clone(), Some(&request), None);
+
+                USB_DEVICES.lock().push(device);
             }
         }
     }
@@ -1050,6 +1169,7 @@ impl XhciHcd {
                     vendor_id: 0,
                     speed: UsbDeviceSpeed::Unknown,
                     devaddr: 0,
+                    ifaces: Vec::new(),
                 }));
 
                 self.configure_device(device.clone(), xhci_speed);
@@ -1261,6 +1381,7 @@ impl XhciHcd {
         let xhci_pipe = Arc::new(RwLock::new(XhciPipe {
             slot: 0,
             epid,
+            maxpacket: epdesc.max_packet_size,
             ring: Mutex::new(new_ring),
         }));
 
@@ -1372,6 +1493,9 @@ impl UsbHcd for XhciHcd {
             if let Some(cmd) = cmd {
                 drop(pipe);
                 self.xfer_setup_in(xhci_pipe, cmd, data);
+            } else if let Some(data) = data {
+                drop(pipe);
+                self.xfer_normal_in(xhci_pipe, data);
             }
         } else {
         }
@@ -1382,6 +1506,9 @@ impl UsbHcd for XhciHcd {
             if let Some(cmd) = cmd {
                 drop(pipe);
                 self.xfer_setup_out(xhci_pipe, cmd, data);
+            } else if let Some(data) = data {
+                drop(pipe);
+                self.xfer_normal_out(xhci_pipe, data);
             }
         } else {
         }
