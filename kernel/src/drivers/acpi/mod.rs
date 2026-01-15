@@ -144,13 +144,7 @@ static RSDP_REQUEST: RsdpRequest = RsdpRequest::new();
 
 pub static ACPI_TABLES: Lazy<Mutex<Option<AcpiTables<AcpiHandler>>>> = Lazy::new(|| {
     let result = if let Some(rsdp_response) = RSDP_REQUEST.get_response() {
-        if let Ok(acpi_tables) =
-            unsafe { AcpiTables::from_rsdp(AcpiHandler, rsdp_response.address()) }
-        {
-            Some(acpi_tables)
-        } else {
-            None
-        }
+        unsafe { AcpiTables::from_rsdp(AcpiHandler, rsdp_response.address()) }.ok()
     } else {
         None
     };

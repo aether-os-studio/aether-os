@@ -10,7 +10,7 @@ const MAIR_ATTR_NORMAL_WB: u64 = 0xFF;
 
 pub fn init() {
     let mair_val =
-        (MAIR_ATTR_NORMAL_WB << 0) | (MAIR_ATTR_NORMAL_NC << 8) | (MAIR_ATTR_DEVICE_NGNRNE << 16);
+        MAIR_ATTR_NORMAL_WB | (MAIR_ATTR_NORMAL_NC << 8) | (MAIR_ATTR_DEVICE_NGNRNE << 16);
     unsafe {
         asm!("msr mair_el1, {}", in(reg) mair_val);
     }

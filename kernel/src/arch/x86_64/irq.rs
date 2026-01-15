@@ -114,8 +114,7 @@ impl IrqRegsArch for Ptrace {
     }
 
     fn get_ret_address(&self) -> u64 {
-        let ret_addr = unsafe { (self.rbp as *const u64).offset(1).read_volatile() };
-        ret_addr
+        unsafe { (self.rbp as *const u64).offset(1).read_volatile() }
     }
 
     fn set_ret_address(&mut self, ret_address: u64) {
@@ -205,9 +204,6 @@ pub enum InterruptIndex {
     Timer = INTERRUPT_INDEX_OFFSET,
     ApicError,
     ApicSpurious,
-    Keyboard,
-    Mouse,
-    HpetTimer,
 }
 
 pub static IDT: Lazy<InterruptDescriptorTable> = Lazy::new(|| {

@@ -54,34 +54,30 @@ pub static LAPIC: Mutex<Option<LocalApic>> = Mutex::new(None);
 static IOAPICS: Mutex<Vec<IoApic>> = Mutex::new(Vec::new());
 static SRC_OVERRIDES: Mutex<Vec<Override>> = Mutex::new(Vec::new());
 
-pub fn ioapics() -> &'static mut [IoApic] {
-    let mut ioapics = IOAPICS.lock();
-    unsafe { core::slice::from_raw_parts_mut(ioapics.as_mut_ptr(), ioapics.len()) }
-}
-pub fn src_overrides() -> &'static mut [Override] {
-    let mut src_overrides = SRC_OVERRIDES.lock();
-    unsafe { core::slice::from_raw_parts_mut(src_overrides.as_mut_ptr(), src_overrides.len()) }
+fn resolve(irq: u8) -> u32 {
+    SRC_OVERRIDES
+        .lock()
+        .iter()
+        .find(|over| over.bus_irq == irq)
+        .map_or(u32::from(irq), |over| over.gsi)
 }
 
-fn get_override(irq: u8) -> Option<&'static Override> {
-    src_overrides().iter().find(|over| over.bus_irq == irq)
-}
-fn resolve(irq: u8) -> u32 {
-    get_override(irq).map_or(u32::from(irq), |over| over.gsi)
-}
-fn find_ioapic(gsi: u32) -> Option<&'static mut IoApic> {
-    ioapics()
+fn use_ioapic<F>(gsi: u32, cb: F)
+where
+    F: FnOnce(&mut IoApic),
+{
+    if let Some(ioapic) = IOAPICS
+        .lock()
         .iter_mut()
         .find(|apic| gsi >= apic.gsi_start && gsi < apic.gsi_start + apic.count as u32)
+    {
+        cb(ioapic)
+    }
 }
 
 pub unsafe fn ioapic_add_entry(irq: u8, vector: u8) {
     let gsi = resolve(irq);
-    let apic = match find_ioapic(gsi) {
-        Some(a) => a,
-        None => return,
-    };
-    apic.map(irq, vector);
+    use_ioapic(gsi, |ioapic| ioapic.map(irq, vector));
 }
 
 const TIMER_CALIBRATION_ITERATION: u32 = 5;

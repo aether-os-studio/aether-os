@@ -8,8 +8,8 @@ pub struct AArch64TimeArch;
 
 impl TimeArch for AArch64TimeArch {
     fn nano_time() -> u64 {
-        let freq = CNTFRQ_EL0.get() as u64;
-        let ticks = CNTPCT_EL0.get() as u64;
+        let freq = CNTFRQ_EL0.get();
+        let ticks = CNTPCT_EL0.get();
         let temp = ticks as u128 * 1000000000;
         (temp / freq as u128) as u64
     }

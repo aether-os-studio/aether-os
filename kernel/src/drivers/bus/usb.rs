@@ -17,9 +17,9 @@ pub const fn fls(x: u32) -> u32 {
 pub fn usb_get_period(device: ArcUsbDevice, epdesc: UsbEndpointDescriptor) -> u32 {
     let period = epdesc.interval as u32;
     if device.read().speed != UsbDeviceSpeed::High {
-        if period <= 0 { 0 } else { fls(period) }
+        fls(period)
     } else {
-        if period <= 4 { 0 } else { period - 4 }
+        period.saturating_sub(4)
     }
 }
 
@@ -29,6 +29,7 @@ pub enum UsbDir {
     In = 0x80,
 }
 
+#[repr(C, packed)]
 #[derive(Debug, Clone, Copy, Default)]
 pub struct UsbEndpointDescriptor {
     pub length: u8,
@@ -40,7 +41,13 @@ pub struct UsbEndpointDescriptor {
     pub interval: u8,
 }
 
-pub trait UsbHcd {
+#[derive(Debug, Clone, Copy)]
+pub enum UsbError {
+    TransferError,
+    DeviceNotFound,
+}
+
+pub trait UsbHcd: Sync + Send {
     fn realloc_pipe(
         &mut self,
         device: ArcUsbDevice,
@@ -50,6 +57,8 @@ pub trait UsbHcd {
 
     fn read_pipe(&mut self, pipe: ArcUsbPipe, cmd: Option<&[u8]>, data: Option<&mut [u8]>);
     fn write_pipe(&mut self, pipe: ArcUsbPipe, cmd: Option<&[u8]>, data: Option<&[u8]>);
+
+    fn wait_pipe(&mut self, arc_pipe: ArcUsbPipe) -> Result<(), UsbError>;
 
     fn read_intr_pipe(&mut self, pipe: ArcUsbPipe, data: &mut [u8], cb: fn(u64));
     fn write_intr_pipe(&mut self, pipe: ArcUsbPipe, data: &[u8], cb: fn(u64));
@@ -75,10 +84,18 @@ pub struct UsbPipe {
     pub eptype: u8,
 }
 
+pub type ArcUsbDeviceInterface = Arc<RwLock<UsbDeviceInterface>>;
+pub type WeakUsbDeviceInterface = Weak<RwLock<UsbDeviceInterface>>;
+
+#[derive(Clone)]
+pub struct UsbDeviceInterface {
+    pub desc: UsbInterfaceDescriptor,
+    pub endpoints: Vec<UsbEndpointDescriptor>,
+}
+
 pub type ArcUsbDevice = Arc<RwLock<UsbDevice>>;
 pub type WeakUsbDevice = Weak<RwLock<UsbDevice>>;
 
-#[derive(Clone)]
 pub struct UsbDevice {
     pub hub: ArcUsbHub,
     pub ctrl_pipe: ArcUsbPipe,
@@ -88,7 +105,7 @@ pub struct UsbDevice {
     pub vendor_id: u16,
     pub speed: UsbDeviceSpeed,
     pub devaddr: u8,
-    pub ifaces: Vec<UsbInterfaceDescriptor>,
+    pub ifaces: Vec<ArcUsbDeviceInterface>,
 }
 
 impl Display for UsbDevice {
@@ -98,7 +115,9 @@ impl Display for UsbDevice {
             write!(
                 f,
                 "\t{}:{}.{}",
-                iface.interface_class, iface.interface_subclass, iface.interface_protocol,
+                iface.read().desc.interface_class,
+                iface.read().desc.interface_subclass,
+                iface.read().desc.interface_protocol,
             )
             .unwrap();
         }
@@ -111,8 +130,11 @@ pub static USB_DEVICES: Mutex<Vec<ArcUsbDevice>> = Mutex::new(Vec::new());
 pub type ArcUsbHub = Arc<RwLock<UsbHub>>;
 pub type WeakUsbHub = Weak<RwLock<UsbHub>>;
 
+pub type ArcUsbHcd = Arc<RwLock<dyn UsbHcd>>;
+
 #[derive(Clone)]
 pub struct UsbHub {
+    pub hcd: ArcUsbHcd,
     pub usbdev: Option<ArcUsbDevice>,
     pub port: u8,
     pub portcount: u8,

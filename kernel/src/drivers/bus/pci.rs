@@ -222,12 +222,12 @@ impl<'a> PciResolver<'a> {
 pub static PCI_DEVICES: Mutex<Option<Vec<PciDevice>>> = Mutex::new(None);
 
 pub fn init() {
-    if let Some(acpi_tables) = ACPI_TABLES.lock().as_mut() {
-        if let Ok(pci_regions) = PciConfigRegions::new(acpi_tables) {
-            let access = PciAccess::new(&pci_regions);
-            let devices = PciResolver::resolve(access);
-            devices.iter().for_each(|device| debug!("{}", device));
-            *PCI_DEVICES.lock() = Some(devices);
-        }
+    if let Some(acpi_tables) = ACPI_TABLES.lock().as_mut()
+        && let Ok(pci_regions) = PciConfigRegions::new(acpi_tables)
+    {
+        let access = PciAccess::new(&pci_regions);
+        let devices = PciResolver::resolve(access);
+        devices.iter().for_each(|device| debug!("{}", device));
+        *PCI_DEVICES.lock() = Some(devices);
     }
 }

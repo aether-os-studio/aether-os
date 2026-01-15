@@ -8,8 +8,7 @@ fn get_cache_line_size() -> usize {
     let mut ctr: u64;
     unsafe { asm!("mrs {0}, ctr_el0", out(reg) ctr) };
     let dminline = (ctr >> 16) & 0xf;
-    let cache_line_size = 4 << dminline;
-    cache_line_size
+    4 << dminline
 }
 
 impl CacheArch for AArch64CacheArch {

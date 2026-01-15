@@ -117,24 +117,21 @@ fn dtb_pl011_callback(device: Arc<DtbDevice>) {
 }
 
 pub fn init() {
-    if let Some(acpi_table) = ACPI_TABLES.lock().as_mut() {
-        if let Some(table) = acpi_table.find_table::<Spcr>() {
-            match table.interface_type() {
-                SpcrInterfaceType::ArmPL011 => {
-                    let pl011 = Pl011Device::new(
-                        table.base_address().unwrap().unwrap().address as usize,
-                        arm_pl011_uart::DataBits::Bits8,
-                        arm_pl011_uart::Parity::None,
-                        arm_pl011_uart::StopBits::One,
-                        115200,
-                        24000000,
-                    );
-                    let mut main_pl011_device = MAIN_PL011_DEVICE.lock();
-                    if main_pl011_device.is_none() {
-                        *main_pl011_device = Some(pl011);
-                    }
-                }
-                _ => {}
+    if let Some(acpi_table) = ACPI_TABLES.lock().as_mut()
+        && let Some(table) = acpi_table.find_table::<Spcr>()
+    {
+        if let SpcrInterfaceType::ArmPL011 = table.interface_type() {
+            let pl011 = Pl011Device::new(
+                table.base_address().unwrap().unwrap().address as usize,
+                arm_pl011_uart::DataBits::Bits8,
+                arm_pl011_uart::Parity::None,
+                arm_pl011_uart::StopBits::One,
+                115200,
+                24000000,
+            );
+            let mut main_pl011_device = MAIN_PL011_DEVICE.lock();
+            if main_pl011_device.is_none() {
+                *main_pl011_device = Some(pl011);
             }
         }
     }

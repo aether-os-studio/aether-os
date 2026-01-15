@@ -59,10 +59,10 @@ extern "C" fn ap_kmain(cpu: &Cpu) -> ! {
     while !GIC_IRQ_INITIALIZED.load(core::sync::atomic::Ordering::SeqCst) {
         spin_loop();
     }
-    if let Some(gic) = GIC_IRQ_CONTROLLER.lock().as_mut() {
-        if let Gic::V3(v3) = gic {
-            v3.setup(get_cpuid_by_archid(cpu.mpidr as usize));
-        }
+    if let Some(gic) = GIC_IRQ_CONTROLLER.lock().as_mut()
+        && let Gic::V3(v3) = gic
+    {
+        v3.setup(get_cpuid_by_archid(cpu.mpidr as usize));
     }
 
     crate::arch::drivers::timer::init();

@@ -22,7 +22,7 @@ pub struct ArchContext {
     pub sp: usize,
 }
 
-pub fn switch_to(prev: ArcTask, next: ArcTask) {}
+pub fn switch_to(_prev: ArcTask, _next: ArcTask) {}
 
 pub fn early_init() {
     rmm::init();

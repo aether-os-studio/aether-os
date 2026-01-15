@@ -42,6 +42,11 @@ impl PhysicalAddress {
     pub fn add(self, offset: usize) -> Self {
         Self(self.0 + offset)
     }
+
+    #[inline(always)]
+    pub fn sub(self, offset: usize) -> Self {
+        Self(self.0 - offset)
+    }
 }
 
 /// Virtual memory address
@@ -63,6 +68,11 @@ impl VirtualAddress {
     #[inline(always)]
     pub fn add(self, offset: usize) -> Self {
         Self(self.0 + offset)
+    }
+
+    #[inline(always)]
+    pub fn sub(self, offset: usize) -> Self {
+        Self(self.0 - offset)
     }
 
     #[inline(always)]

@@ -10,7 +10,7 @@ impl TimeArch for X8664TimeArch {
     }
 
     fn delay(ns: u64) {
-        let timeout = X8664TimeArch::nano_time() as u64 + ns;
+        let timeout = X8664TimeArch::nano_time() + ns;
         while X8664TimeArch::nano_time() < timeout {
             spin_loop();
         }

@@ -5,13 +5,15 @@ use alloc::{
     string::{String, ToString},
     sync::{Arc, Weak},
 };
-use rmm::{Arch, FrameAllocator, FrameCount, PhysicalAddress, VirtualAddress};
+use rmm::{Arch, FrameAllocator, FrameCount, PageMapper, PhysicalAddress, VirtualAddress};
 use spin::{Mutex, RwLock};
 
+#[cfg(any(target_arch = "x86_64", target_arch = "riscv64"))]
+use crate::init::memory::KERNEL_PAGE_TABLE_PHYS;
 use crate::{
     arch::{ArchContext, CurrentRmmArch, Ptrace, get_archid, irq::IrqRegsArch, switch_to},
     consts::STACK_SIZE,
-    init::memory::{FRAME_ALLOCATOR, KERNEL_PAGE_TABLE_PHYS, PAGE_SIZE},
+    init::memory::{FRAME_ALLOCATOR, PAGE_SIZE},
     initial_kernel_thread,
     smp::{CPU_COUNT, get_archid_by_cpuid, get_cpuid_by_archid},
     task::sched::{ArcScheduler, SCHEDULERS},
@@ -82,6 +84,18 @@ impl Task {
         Arc::new(RwLock::new(task))
     }
 
+    pub fn get_name(&self) -> String {
+        self.name.clone()
+    }
+
+    pub fn get_parent(&self) -> Option<ArcTask> {
+        self.parent.clone()?.upgrade()
+    }
+
+    pub fn get_pid(&self) -> usize {
+        self.pid
+    }
+
     pub fn get_cpu_id(&self) -> usize {
         self.cpu_id
     }
@@ -119,6 +133,19 @@ impl Task {
             );
             regs.set_args(args);
         }
+    }
+}
+
+impl Drop for Task {
+    fn drop(&mut self) {
+        let mut frame_allocator = FRAME_ALLOCATOR.lock();
+        let page_mapper = unsafe {
+            PageMapper::<CurrentRmmArch, _>::current(rmm::TableKind::Kernel, &mut *frame_allocator)
+        };
+        let kernel_stack_frame_count = FrameCount::new(STACK_SIZE / PAGE_SIZE);
+        let kernel_stack_virt = self.kernel_stack_top.sub(STACK_SIZE);
+        let (kernel_stack_phys, _) = page_mapper.translate(kernel_stack_virt).unwrap();
+        unsafe { frame_allocator.free(kernel_stack_phys, kernel_stack_frame_count) };
     }
 }
 
