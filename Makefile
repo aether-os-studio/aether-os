@@ -8,5 +8,8 @@ all:
 	$(MAKE) -C user
 	$(MAKE) -C kernel
 
+clippy:
+	$(MAKE) -C kernel clippy
+
 run: all
 	$(MAKE) -C kernel run

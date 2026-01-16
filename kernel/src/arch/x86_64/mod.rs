@@ -20,6 +20,52 @@ use ::rmm::Arch;
 use ::rmm::TableKind;
 pub use ::rmm::X8664Arch as CurrentRmmArch;
 use x86_64::registers::control::{Cr0, Cr0Flags, Cr4, Cr4Flags};
+use x86_64::registers::model_specific::FsBase;
+use x86_64::registers::model_specific::GsBase;
+
+#[repr(C, align(16))]
+#[derive(Debug, Copy, Clone, Default)]
+pub struct FpState {
+    // 0
+    fcw: u16,
+    fsw: u16,
+    ftw: u16,
+    fop: u16,
+    word2: u64,
+    // 16
+    word3: u64,
+    mxcsr: u32,
+    mxcsr_mask: u32,
+    // 32
+    mm: [u64; 16],
+    // 160
+    xmm: [u64; 32],
+    // 416
+    rest: [u64; 12],
+}
+
+impl FpState {
+    pub fn new() -> Self {
+        assert!(core::mem::size_of::<Self>() == 512);
+        Self {
+            mxcsr: 0x1f80,
+            fcw: 0x037f,
+            ..Self::default()
+        }
+    }
+
+    pub fn save(&mut self) {
+        unsafe {
+            core::arch::x86_64::_fxsave64(self as *mut FpState as *mut u8);
+        }
+    }
+
+    pub fn restore(&self) {
+        unsafe {
+            core::arch::x86_64::_fxrstor64(self as *const FpState as *const u8);
+        }
+    }
+}
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default)]
@@ -28,6 +74,7 @@ pub struct ArchContext {
     pub sp: usize,
     pub fsbase: usize,
     pub gsbase: usize,
+    pub fpu: FpState,
 }
 
 #[unsafe(no_mangle)]
@@ -38,6 +85,15 @@ unsafe extern "C" fn do_switch_to(prev: *mut Task, next: *const Task) {
     if prev.page_table_addr != next.page_table_addr {
         CurrentRmmArch::set_table(TableKind::User, next.page_table_addr);
     }
+
+    prev.arch_context.fsbase = FsBase::read().as_u64() as usize;
+    prev.arch_context.gsbase = GsBase::read().as_u64() as usize;
+
+    FsBase::write(x86_64::VirtAddr::new(next.arch_context.fsbase as u64));
+    GsBase::write(x86_64::VirtAddr::new(next.arch_context.gsbase as u64));
+
+    prev.arch_context.fpu.save();
+    next.arch_context.fpu.restore();
 }
 
 use core::mem::offset_of;

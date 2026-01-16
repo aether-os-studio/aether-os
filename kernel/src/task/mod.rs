@@ -20,6 +20,7 @@ use crate::{
 };
 
 pub mod sched;
+// pub mod user;
 
 pub type ArcTask = Arc<RwLock<Task>>;
 pub type WeakArcTask = Weak<RwLock<Task>>;
@@ -186,6 +187,16 @@ pub fn create_kernel_task(name: String, entry: usize) {
     task_guard.set_kernel_context_info(entry, kernel_stack_top);
     drop(task_guard);
     add_task(task.clone());
+}
+
+pub fn block(task: ArcTask) {
+    let scheduler = get_scheduler_by_cpuid(task.read().cpu_id);
+    scheduler.write().remove_task(task);
+}
+
+pub fn unblock(task: ArcTask) {
+    let scheduler = get_scheduler_by_cpuid(task.read().cpu_id);
+    scheduler.write().add_task(task);
 }
 
 pub fn init() {

@@ -34,6 +34,27 @@ impl Scheduler {
         self.tasks.push_back(Arc::downgrade(&task));
     }
 
+    pub fn remove_task(&mut self, task: ArcTask) {
+        let weak = Arc::downgrade(&task);
+
+        if let Some(current) = self.current.clone()
+            && current.ptr_eq(&weak)
+        {
+            if let Some(next) = self.tasks.pop_front() {
+                self.current = Some(next);
+            } else {
+                panic!("No more tasks for remove");
+            }
+        } else {
+            let index = self
+                .tasks
+                .iter()
+                .position(|task| task.ptr_eq(&weak))
+                .unwrap();
+            self.tasks.remove(index);
+        }
+    }
+
     pub fn schedule(&mut self) -> ArcTask {
         if let Some(current) = self.current.clone() {
             if let Some(next) = self.tasks.pop_front() {

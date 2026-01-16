@@ -24,6 +24,9 @@ $(BUILD)/kernel-$(ARCH).elf:
 	RUSTFLAGS="-C relocation-model=static" cargo build --profile $(RUST_PROFILE) --target $(RUST_TARGET) -Z build-std=core,alloc -Zbuild-std-features=compiler-builtins-mem
 	cp target/$(RUST_TARGET)/$(RUST_PROFILE_SUBDIR)/kernel $(BUILD)/kernel-$(ARCH).elf
 
+clippy:
+	cargo clippy --target $(RUST_TARGET) -Zbuild-std=core,alloc
+
 limine/limine:
 	rm -rf limine
 	git clone https://github.com/limine-bootloader/limine.git --branch=v10.x-binary --depth=1

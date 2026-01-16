@@ -1,7 +1,7 @@
 use alloc::{sync::Arc, vec::Vec};
 use spin::RwLock;
 
-use crate::fs::vfs::dirent::Dirent;
+use crate::fs::vfs::{dirent::Dirent, fs::FileSystemTrait};
 
 #[derive(Debug, Clone, Copy)]
 pub enum FileType {
@@ -14,7 +14,7 @@ pub enum FileType {
     Socket,
 }
 
-pub trait FileTrait: Send + Sync {
+pub trait FileTrait: Send + Sync + FileSystemTrait {
     fn size(&self) -> Option<usize>;
 
     fn read(&mut self, buf: &mut [u8], offset: usize) -> Option<usize>;

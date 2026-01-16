@@ -21,6 +21,7 @@ use crate::{
         },
     },
     init::memory::{FRAME_ALLOCATOR, PAGE_SIZE, align_down, align_up},
+    utils::Dma,
 };
 
 #[repr(u8)]
@@ -140,7 +141,7 @@ pub enum TransferKind {
 }
 
 #[repr(C)]
-#[derive(Clone, Default)]
+#[derive(Clone, Copy, Default)]
 pub struct XhciTrb {
     pub data_low: u32,
     pub data_high: u32,
@@ -515,8 +516,10 @@ impl core::fmt::Display for XhciTrb {
     }
 }
 
+const TRB_COUNT: usize = PAGE_SIZE / size_of::<XhciTrb>();
+
 pub struct XhciRing {
-    ring_paddr: PhysicalAddress,
+    trbs: Dma<[XhciTrb; TRB_COUNT]>,
     idx: usize,
     event_idx: usize,
     cs: bool,
@@ -525,12 +528,10 @@ pub struct XhciRing {
 
 impl XhciRing {
     pub fn new() -> Self {
-        let ring_paddr = unsafe { FRAME_ALLOCATOR.lock().allocate_one() }
-            .expect("No memory can be allocate for xhci ring");
-        let ring_vaddr = unsafe { CurrentRmmArch::phys_to_virt(ring_paddr) };
-        unsafe { core::ptr::write_bytes(ring_vaddr.data() as *mut u8, 0, PAGE_SIZE) };
+        let trbs = Dma::new([XhciTrb::default(); TRB_COUNT]).expect("No memory for trbs");
+
         Self {
-            ring_paddr,
+            trbs,
             idx: 0,
             event_idx: 0,
             cs: true,
@@ -538,23 +539,15 @@ impl XhciRing {
         }
     }
 
-    pub fn trbs(&mut self) -> &'static mut [XhciTrb] {
-        let virt = unsafe { CurrentRmmArch::phys_to_virt(self.ring_paddr) };
-        unsafe {
-            core::slice::from_raw_parts_mut(
-                virt.data() as *mut XhciTrb,
-                PAGE_SIZE / size_of::<XhciTrb>(),
-            )
-        }
-    }
-
     pub fn submit_trb<F>(&mut self, cb: F)
     where
         F: FnOnce(&mut XhciTrb, bool),
     {
-        let trbs = self.trbs();
+        let physical = self.trbs.physical().data();
+
+        let trbs = &mut self.trbs;
         if self.idx >= (PAGE_SIZE / size_of::<XhciTrb>() - 1) {
-            trbs[self.idx].link(self.ring_paddr.data(), true, self.cs);
+            trbs[self.idx].link(physical, true, self.cs);
             self.idx = 0;
             self.cs = !self.cs;
         }
@@ -621,7 +614,7 @@ pub struct XhciErSeg {
 
 pub struct XhciHcd {
     registers: xhci::Registers<XhciMapper>,
-    dcbaa_phys: PhysicalAddress,
+    dcbaa: Dma<[PhysicalAddress; 256]>,
     eseg_phys: PhysicalAddress,
     cmd_ring: Mutex<XhciRing>,
     event_ring: Mutex<XhciRing>,
@@ -686,13 +679,13 @@ struct XhciEpctx {
 
 impl XhciHcd {
     pub fn new(base: PhysicalAddress) -> Self {
-        let dcbaa_phys = unsafe { FRAME_ALLOCATOR.lock().allocate_one() }
-            .expect("No memory can be allocated for xhci device context base address array");
+        let dcbaa = Dma::new([PhysicalAddress::new(0); 256]).unwrap();
+
         let eseg_phys = unsafe { FRAME_ALLOCATOR.lock().allocate_one() }
             .expect("No memory can be allocated for xhci event segment");
         let mut xhci = Self {
             registers: unsafe { xhci::Registers::new(base.data(), XhciMapper) },
-            dcbaa_phys,
+            dcbaa,
             eseg_phys,
             cmd_ring: Mutex::new(XhciRing::new()),
             event_ring: Mutex::new(XhciRing::new()),
@@ -706,14 +699,6 @@ impl XhciHcd {
     }
 
     pub fn init(&mut self) {
-        let dcbaa_virt = unsafe { CurrentRmmArch::phys_to_virt(self.dcbaa_phys) };
-        unsafe {
-            core::ptr::write_bytes(
-                dcbaa_virt.data() as *mut u64,
-                0,
-                PAGE_SIZE / size_of::<u64>(),
-            )
-        };
         let eseg_virt = unsafe { CurrentRmmArch::phys_to_virt(self.eseg_phys) };
         unsafe {
             core::ptr::write_bytes(
@@ -759,10 +744,10 @@ impl XhciHcd {
         });
 
         operational.dcbaap.update_volatile(|dcbaa| {
-            dcbaa.set(self.dcbaa_phys.data() as u64);
+            dcbaa.set(self.dcbaa.physical().data() as u64);
         });
         operational.crcr.update_volatile(|crcr| {
-            crcr.set_command_ring_pointer(self.cmd_ring.lock().ring_paddr.data() as u64);
+            crcr.set_command_ring_pointer(self.cmd_ring.lock().trbs.physical().data() as u64);
             crcr.set_ring_cycle_state();
         });
 
@@ -772,7 +757,7 @@ impl XhciHcd {
         interrupter0.erstsz.update_volatile(|erstsz| {
             erstsz.set(1);
         });
-        let event_ring_paddr = self.event_ring.lock().ring_paddr.data() as u64;
+        let event_ring_paddr = self.event_ring.lock().trbs.physical().data() as u64;
         interrupter0.erdp.update_volatile(|erdp| {
             erdp.set_event_ring_dequeue_pointer(event_ring_paddr);
         });
@@ -810,9 +795,7 @@ impl XhciHcd {
                 };
             }
 
-            unsafe {
-                (dcbaa_virt.data() as *mut u64).write_volatile(spba_phys.data() as u64);
-            }
+            self.dcbaa[0] = spba_phys;
         }
 
         operational.usbcmd.update_volatile(|usbcmd| {
@@ -1207,7 +1190,7 @@ impl XhciHcd {
     pub fn process_events(&mut self) -> bool {
         let mut event_ring = self.event_ring.lock();
         let mut idx = event_ring.idx;
-        let trb = event_ring.trbs()[idx].clone();
+        let trb = event_ring.trbs[idx].clone();
         if trb.cycle() != event_ring.cs {
             return false;
         }
@@ -1225,7 +1208,7 @@ impl XhciHcd {
                     let endpoint = endpoint.write();
                     let mut ring = endpoint.ring.lock();
                     ring.result.set(trb.read_data(), trb.status, trb.control);
-                    ring.event_idx = (trb.read_data() as usize - ring.ring_paddr.data())
+                    ring.event_idx = (trb.read_data() as usize - ring.trbs.physical().data())
                         / size_of::<XhciTrb>()
                         + 1;
                 }
@@ -1236,7 +1219,7 @@ impl XhciHcd {
                 cmd_ring
                     .result
                     .set(trb.read_data(), trb.status, trb.control);
-                cmd_ring.event_idx = (trb.read_data() as usize - cmd_ring.ring_paddr.data())
+                cmd_ring.event_idx = (trb.read_data() as usize - cmd_ring.trbs.physical().data())
                     / size_of::<XhciTrb>()
                     + 1;
             }
@@ -1254,7 +1237,7 @@ impl XhciHcd {
         let interrupter = &mut self.registers.interrupter_register_set;
         let mut interrupt0 = interrupter.interrupter_mut(0);
 
-        let addr = event_ring.ring_paddr.add(idx * size_of::<XhciTrb>());
+        let addr = event_ring.trbs.physical().add(idx * size_of::<XhciTrb>());
         interrupt0.erdp.update_volatile(|erdp| {
             erdp.set_event_ring_dequeue_pointer(addr.data() as u64);
             erdp.set_0_event_handler_busy();
@@ -1363,12 +1346,7 @@ impl XhciHcd {
                     slotctx.ctx[2] |= hubdev.read().slot as u32;
                     slotctx.ctx[2] |= ((device.port + 1) as u32) << 8;
                 } else {
-                    let dcbaa_virt = unsafe { CurrentRmmArch::phys_to_virt(self.dcbaa_phys) };
-                    let hubslotctx_phys = PhysicalAddress::new(unsafe {
-                        (dcbaa_virt.data() as *const usize)
-                            .add(hubdev.read().slot as usize)
-                            .read_volatile()
-                    });
+                    let hubslotctx_phys = self.dcbaa[hubdev.read().slot as usize];
                     let hubslotctx_virt = unsafe { CurrentRmmArch::phys_to_virt(hubslotctx_phys) };
                     let hubslotctx = unsafe {
                         (hubslotctx_virt.data() as *const XhciSlotctx).as_ref_unchecked()
@@ -1413,7 +1391,7 @@ impl XhciHcd {
         };
 
         let new_ring = XhciRing::new();
-        let new_ring_phys = new_ring.ring_paddr.data() as u64;
+        let new_ring_phys = new_ring.trbs.physical().data() as u64;
 
         let xhci_pipe = Arc::new(RwLock::new(XhciPipe {
             slot: 0,
@@ -1458,12 +1436,7 @@ impl XhciHcd {
 
             device.write().slot = self.enable_slot();
 
-            let dcbaa_virt = unsafe { CurrentRmmArch::phys_to_virt(self.dcbaa_phys) };
-            unsafe {
-                (dcbaa_virt.data() as *mut u64)
-                    .add(device.read().slot as usize)
-                    .write_volatile(dcba.data() as u64)
-            };
+            self.dcbaa[device.read().slot as usize] = PhysicalAddress::new(dcba.data());
 
             self.address_device(device.read().slot, inctx_phys);
 

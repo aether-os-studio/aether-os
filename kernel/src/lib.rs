@@ -44,6 +44,7 @@ pub mod init;
 pub mod memory;
 pub mod smp;
 pub mod task;
+pub mod utils;
 
 use core::{hint::spin_loop, panic::PanicInfo};
 
@@ -113,8 +114,6 @@ extern "C" fn initial_kernel_thread() -> ! {
     drivers::usb::init();
 
     drivers::storage::init();
-
-    fs::init();
 
     loop {
         spin_loop();

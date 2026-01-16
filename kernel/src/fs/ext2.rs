@@ -13,7 +13,7 @@ use efs::{
         file::{DirectoryRead, File, FileRead},
         types::{Gid, Mode, Uid},
     },
-    path::Path,
+    path::{Path, UnixStr},
 };
 use spin::RwLock;
 
@@ -49,11 +49,15 @@ impl efs::dev::Device for BlockDevice {
 
 pub struct Ext2File {
     file: efs::fs::ext2::Ext2TypeWithFile<BlockDevice>,
+    fs: Ext2Fs<BlockDevice>,
 }
 
 impl Ext2File {
-    pub fn new(file: efs::fs::ext2::Ext2TypeWithFile<BlockDevice>) -> Self {
-        Self { file }
+    pub fn new(
+        file: efs::fs::ext2::Ext2TypeWithFile<BlockDevice>,
+        fs: Ext2Fs<BlockDevice>,
+    ) -> Self {
+        Self { file, fs }
     }
 }
 
@@ -123,7 +127,7 @@ impl FileTrait for Ext2File {
             let entries = directory.entries().ok()?;
             let mut result = Vec::new();
             for entry in entries {
-                let child = Ext2File::new(entry.file);
+                let child = Ext2File::new(entry.file, self.fs.clone());
                 let (filetype, inode) = child.file_info()?;
                 let dirent = Dirent::new(inode, filetype, entry.filename.to_string());
                 result.push(dirent);
@@ -208,6 +212,32 @@ impl FileTrait for Ext2File {
     }
 }
 
+impl FileSystemTrait for Ext2File {
+    fn lookup(&mut self, path: String, follow_symlink: bool) -> Option<ArcFile> {
+        if path.starts_with('/') {
+            let e2file = self
+                .fs
+                .get_file(
+                    &Path::from_str(&path).unwrap(),
+                    self.fs.root().expect("Failed get root"),
+                    follow_symlink,
+                )
+                .ok()?;
+
+            Some(Arc::new(RwLock::new(Self::new(e2file, self.fs.clone()))))
+        } else {
+            if let efs::fs::ext2::Ext2TypeWithFile::Directory(directory) = self.file.clone() {
+                Some(Arc::new(RwLock::new(Self::new(
+                    directory.entry(UnixStr::from_str(&path).ok()?).ok()??,
+                    self.fs.clone(),
+                ))))
+            } else {
+                None
+            }
+        }
+    }
+}
+
 pub struct Ext2FileSystem {
     fs: Ext2Fs<BlockDevice>,
 }
@@ -230,6 +260,9 @@ impl FileSystemTrait for Ext2FileSystem {
                 follow_symlink,
             )
             .ok()?;
-        Some(Arc::new(RwLock::new(Ext2File::new(e2file))))
+        Some(Arc::new(RwLock::new(Ext2File::new(
+            e2file,
+            self.fs.clone(),
+        ))))
     }
 }
