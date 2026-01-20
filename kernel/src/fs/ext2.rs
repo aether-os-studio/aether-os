@@ -92,6 +92,10 @@ impl Ext2File {
 }
 
 impl FileTrait for Ext2File {
+    fn file_type(&self) -> FileType {
+        self.file_info().expect("Failed to get file info").0
+    }
+
     fn size(&self) -> Option<usize> {
         if let efs::fs::ext2::Ext2TypeWithFile::Regular(regular) = self.file.clone() {
             Some(regular.stat().size.0 as usize)

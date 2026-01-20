@@ -96,7 +96,7 @@ extern "C" fn kmain() -> ! {
 
     arch::early_init();
 
-    task::init();
+    task::init().expect("Failed to execute kernel init");
 
     info!("Kernel initialized");
 
@@ -115,7 +115,10 @@ extern "C" fn initial_kernel_thread() -> ! {
 
     drivers::storage::init();
 
+    task::init_user().expect("Failed to execute init");
+
     loop {
+        CurrentIrqArch::enable_global_irq();
         spin_loop();
     }
 }

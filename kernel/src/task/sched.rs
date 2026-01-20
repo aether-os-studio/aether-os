@@ -10,6 +10,7 @@ pub type ArcScheduler = Arc<RwLock<Scheduler>>;
 pub type WeakArcScheduler = Weak<RwLock<Scheduler>>;
 
 pub struct Scheduler {
+    idle: WeakArcTask,
     current: Option<WeakArcTask>,
     tasks: VecDeque<WeakArcTask>,
 }
@@ -17,16 +18,24 @@ pub struct Scheduler {
 impl Scheduler {
     pub fn new() -> ArcScheduler {
         Arc::new(RwLock::new(Scheduler {
+            idle: Weak::new(),
             current: None,
             tasks: VecDeque::new(),
         }))
     }
 
     pub fn get_current_task(&self) -> Option<ArcTask> {
-        self.current.as_ref().map(|c| c.upgrade().unwrap())
+        if let Some(current) = self.current.as_ref() {
+            current.upgrade()
+        } else {
+            self.idle.upgrade()
+        }
     }
 
     pub fn set_current_task(&mut self, current: ArcTask) {
+        if self.idle.upgrade().is_none() {
+            self.idle = Arc::downgrade(&current);
+        }
         self.current = Some(Arc::downgrade(&current))
     }
 
@@ -40,11 +49,7 @@ impl Scheduler {
         if let Some(current) = self.current.clone()
             && current.ptr_eq(&weak)
         {
-            if let Some(next) = self.tasks.pop_front() {
-                self.current = Some(next);
-            } else {
-                panic!("No more tasks for remove");
-            }
+            self.current = None;
         } else {
             let index = self
                 .tasks
@@ -65,7 +70,7 @@ impl Scheduler {
                 current.upgrade().unwrap()
             }
         } else {
-            panic!("Scheduler not initialized");
+            self.idle.upgrade().unwrap()
         }
     }
 }

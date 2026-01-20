@@ -1190,7 +1190,7 @@ impl XhciHcd {
     pub fn process_events(&mut self) -> bool {
         let mut event_ring = self.event_ring.lock();
         let mut idx = event_ring.idx;
-        let trb = event_ring.trbs[idx].clone();
+        let trb = event_ring.trbs[idx];
         if trb.cycle() != event_ring.cs {
             return false;
         }

@@ -4,6 +4,7 @@ use alloc::{
     collections::vec_deque::VecDeque,
     string::{String, ToString},
     sync::{Arc, Weak},
+    vec::Vec,
 };
 use rmm::{Arch, FrameAllocator, FrameCount, PageMapper, PhysicalAddress, VirtualAddress};
 use spin::{Mutex, RwLock};
@@ -13,14 +14,18 @@ use crate::init::memory::KERNEL_PAGE_TABLE_PHYS;
 use crate::{
     arch::{ArchContext, CurrentRmmArch, Ptrace, get_archid, irq::IrqRegsArch, switch_to},
     consts::STACK_SIZE,
+    fs::ROOT_DIR,
     init::memory::{FRAME_ALLOCATOR, PAGE_SIZE},
     initial_kernel_thread,
     smp::{CPU_COUNT, get_archid_by_cpuid, get_cpuid_by_archid},
-    task::sched::{ArcScheduler, SCHEDULERS},
+    task::{
+        sched::{ArcScheduler, SCHEDULERS},
+        user::create_user_task,
+    },
 };
 
 pub mod sched;
-// pub mod user;
+pub mod user;
 
 pub type ArcTask = Arc<RwLock<Task>>;
 pub type WeakArcTask = Weak<RwLock<Task>>;
@@ -180,13 +185,14 @@ pub fn get_current_task() -> Option<ArcTask> {
     get_scheduler().read().get_current_task()
 }
 
-pub fn create_kernel_task(name: String, entry: usize) {
+pub fn create_kernel_task(name: String, entry: usize) -> Option<ArcTask> {
     let task = Task::new(name);
     let mut task_guard = task.write();
     let kernel_stack_top = task_guard.get_kernel_stack_top();
     task_guard.set_kernel_context_info(entry, kernel_stack_top);
     drop(task_guard);
     add_task(task.clone());
+    Some(task)
 }
 
 pub fn block(task: ArcTask) {
@@ -199,19 +205,37 @@ pub fn unblock(task: ArcTask) {
     scheduler.write().add_task(task);
 }
 
-pub fn init() {
+pub fn cleanup(task: ArcTask) {
+    let mut tasks = TASKS.lock();
+    let pos = tasks.iter().position(|p| Arc::ptr_eq(p, &task)).unwrap();
+    tasks.remove(pos);
+}
+
+pub fn exit_current() -> ! {
+    block(get_current_task().unwrap());
+    loop {
+        schedule();
+    }
+}
+
+pub fn init() -> Option<ArcTask> {
     for cpu_id in 0..CPU_COUNT.load(core::sync::atomic::Ordering::SeqCst) {
         let idle_task = Task::new_idle(cpu_id);
         TASKS.lock().push_back(idle_task.clone());
-        get_scheduler_by_cpuid(cpu_id)
-            .write()
-            .set_current_task(idle_task);
+        let scheduler = get_scheduler_by_cpuid(cpu_id);
+        let mut scheduler = scheduler.write();
+        scheduler.set_current_task(idle_task);
     }
 
     create_kernel_task(
         "init".to_string(),
         initial_kernel_thread as *const () as usize,
-    );
+    )
+}
+
+pub fn init_user() -> Option<ArcTask> {
+    let init_file = ROOT_DIR.write().lookup("/sbin/init".to_string(), true)?;
+    create_user_task("init".to_string(), init_file, Vec::new(), Vec::new()).ok()
 }
 
 pub fn schedule() {

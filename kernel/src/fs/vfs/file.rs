@@ -15,6 +15,7 @@ pub enum FileType {
 }
 
 pub trait FileTrait: Send + Sync + FileSystemTrait {
+    fn file_type(&self) -> FileType;
     fn size(&self) -> Option<usize>;
 
     fn read(&mut self, buf: &mut [u8], offset: usize) -> Option<usize>;
