@@ -1478,13 +1478,11 @@ impl UsbHcd for XhciHcd {
             } else {
                 self.alloc_pipe(device, epdesc)
             }
+        } else if let Some(_pipe) = pipe {
+            // free
+            None
         } else {
-            if let Some(_pipe) = pipe {
-                // free
-                None
-            } else {
-                None
-            }
+            None
         }
     }
 

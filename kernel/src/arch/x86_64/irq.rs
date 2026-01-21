@@ -41,25 +41,25 @@ pub struct Ptrace {
 }
 impl core::fmt::Display for Ptrace {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "r15: {:#x}\n", self.r15)?;
-        write!(f, "r14: {:#x}\n", self.r14)?;
-        write!(f, "r13: {:#x}\n", self.r13)?;
-        write!(f, "r12: {:#x}\n", self.r12)?;
-        write!(f, "r11: {:#x}\n", self.r11)?;
-        write!(f, "r10: {:#x}\n", self.r10)?;
-        write!(f, "r9: {:#x}\n", self.r9)?;
-        write!(f, "r8: {:#x}\n", self.r8)?;
-        write!(f, "rbx: {:#x}\n", self.rbx)?;
-        write!(f, "rcx: {:#x}\n", self.rcx)?;
-        write!(f, "rdx: {:#x}\n", self.rdx)?;
-        write!(f, "rsi: {:#x}\n", self.rsi)?;
-        write!(f, "rdi: {:#x}\n", self.rdi)?;
-        write!(f, "rbp: {:#x}\n", self.rbp)?;
-        write!(f, "rax: {:#x}\n", self.rax)?;
-        write!(f, "rip: {:#x}\n", self.rip)?;
-        write!(f, "cs: {:#x}\n", self.cs)?;
-        write!(f, "rflags: {:#x}\n", self.rflags)?;
-        write!(f, "rsp: {:#x}\n", self.rsp)?;
+        writeln!(f, "r15: {:#x}", self.r15)?;
+        writeln!(f, "r14: {:#x}", self.r14)?;
+        writeln!(f, "r13: {:#x}", self.r13)?;
+        writeln!(f, "r12: {:#x}", self.r12)?;
+        writeln!(f, "r11: {:#x}", self.r11)?;
+        writeln!(f, "r10: {:#x}", self.r10)?;
+        writeln!(f, "r9: {:#x}", self.r9)?;
+        writeln!(f, "r8: {:#x}", self.r8)?;
+        writeln!(f, "rbx: {:#x}", self.rbx)?;
+        writeln!(f, "rcx: {:#x}", self.rcx)?;
+        writeln!(f, "rdx: {:#x}", self.rdx)?;
+        writeln!(f, "rsi: {:#x}", self.rsi)?;
+        writeln!(f, "rdi: {:#x}", self.rdi)?;
+        writeln!(f, "rbp: {:#x}", self.rbp)?;
+        writeln!(f, "rax: {:#x}", self.rax)?;
+        writeln!(f, "rip: {:#x}", self.rip)?;
+        writeln!(f, "cs: {:#x}", self.cs)?;
+        writeln!(f, "rflags: {:#x}", self.rflags)?;
+        writeln!(f, "rsp: {:#x}", self.rsp)?;
         write!(f, "ss: {:#x}", self.ss)?;
         Ok(())
     }

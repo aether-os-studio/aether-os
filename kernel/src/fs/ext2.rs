@@ -229,15 +229,13 @@ impl FileSystemTrait for Ext2File {
                 .ok()?;
 
             Some(Arc::new(RwLock::new(Self::new(e2file, self.fs.clone()))))
+        } else if let efs::fs::ext2::Ext2TypeWithFile::Directory(directory) = self.file.clone() {
+            Some(Arc::new(RwLock::new(Self::new(
+                directory.entry(UnixStr::from_str(&path).ok()?).ok()??,
+                self.fs.clone(),
+            ))))
         } else {
-            if let efs::fs::ext2::Ext2TypeWithFile::Directory(directory) = self.file.clone() {
-                Some(Arc::new(RwLock::new(Self::new(
-                    directory.entry(UnixStr::from_str(&path).ok()?).ok()??,
-                    self.fs.clone(),
-                ))))
-            } else {
-                None
-            }
+            None
         }
     }
 }
