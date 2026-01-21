@@ -2,6 +2,7 @@
 #![no_main]
 #![allow(clippy::field_reassign_with_default)]
 #![allow(clippy::missing_safety_doc)]
+#![allow(clippy::mut_from_ref)]
 #![allow(clippy::new_ret_no_self)]
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 #![allow(clippy::too_many_arguments)]

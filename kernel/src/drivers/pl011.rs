@@ -35,9 +35,8 @@ impl<'a> Pl011Device<'a> {
         let size = align_up(PAGE_SIZE);
 
         let mut frame_allocator = FRAME_ALLOCATOR.lock();
-        let mut mapper = unsafe {
-            PageMapper::<CurrentRmmArch, _>::current(rmm::TableKind::Kernel, &mut *frame_allocator)
-        };
+        let mut mapper =
+            unsafe { KernelPageMapper::current(rmm::TableKind::Kernel, &mut *frame_allocator) };
 
         for i in (0..size).step_by(PAGE_SIZE) {
             if let Some(flusher) = unsafe {

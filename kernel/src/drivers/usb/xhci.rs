@@ -3,8 +3,7 @@ use core::{hint::spin_loop, num::NonZeroUsize};
 use alloc::{collections::btree_map::BTreeMap, sync::Arc, vec::Vec};
 use bit_field::BitField;
 use rmm::{
-    Arch, FrameAllocator, FrameCount, PageFlags, PageMapper, PhysicalAddress, TableKind,
-    VirtualAddress,
+    Arch, FrameAllocator, FrameCount, PageFlags, PhysicalAddress, TableKind, VirtualAddress,
 };
 use spin::{Mutex, RwLock};
 use xhci::accessor::Mapper;
@@ -21,7 +20,7 @@ use crate::{
         },
     },
     init::memory::{FRAME_ALLOCATOR, PAGE_SIZE, align_down, align_up},
-    memory::DummyFrameAllocator,
+    memory::{DummyFrameAllocator, mapper::KernelPageMapper},
     utils::Dma,
 };
 
@@ -824,7 +823,10 @@ impl XhciHcd {
             let addr = VirtualAddress::new(addr_aligned);
             let mut frame_allocator = FRAME_ALLOCATOR.lock();
             let page_mapper = unsafe {
-                PageMapper::<CurrentRmmArch, _>::current(TableKind::Kernel, &mut *frame_allocator)
+                KernelPageMapper::<CurrentRmmArch, _>::current(
+                    TableKind::Kernel,
+                    &mut *frame_allocator,
+                )
             };
             let (phys, _) = page_mapper.translate(addr).unwrap();
             ring.submit_trb(|trb, cs| trb.data(phys.add(offset).data(), len as u16, true, cs));
@@ -847,7 +849,10 @@ impl XhciHcd {
             let addr = VirtualAddress::new(addr_aligned);
             let mut frame_allocator = FRAME_ALLOCATOR.lock();
             let page_mapper = unsafe {
-                PageMapper::<CurrentRmmArch, _>::current(TableKind::Kernel, &mut *frame_allocator)
+                KernelPageMapper::<CurrentRmmArch, _>::current(
+                    TableKind::Kernel,
+                    &mut *frame_allocator,
+                )
             };
             let (phys, _) = page_mapper.translate(addr).unwrap();
             ring.submit_trb(|trb, cs| trb.data(phys.add(offset).data(), len as u16, false, cs));
@@ -907,7 +912,7 @@ impl XhciHcd {
         let offset = addr_unaligned - addr_aligned;
         let addr = VirtualAddress::new(addr_aligned);
         let page_mapper = unsafe {
-            PageMapper::<CurrentRmmArch, _>::current(TableKind::Kernel, DummyFrameAllocator)
+            KernelPageMapper::<CurrentRmmArch, _>::current(TableKind::Kernel, DummyFrameAllocator)
         };
         let (phys, _) = page_mapper.translate(addr).unwrap();
         self.submit_trb_split(arc_pipe.clone(), phys.add(offset), len, true);
@@ -920,7 +925,7 @@ impl XhciHcd {
         let offset = addr_unaligned - addr_aligned;
         let addr = VirtualAddress::new(addr_aligned);
         let page_mapper = unsafe {
-            PageMapper::<CurrentRmmArch, _>::current(TableKind::Kernel, DummyFrameAllocator)
+            KernelPageMapper::<CurrentRmmArch, _>::current(TableKind::Kernel, DummyFrameAllocator)
         };
         let (phys, _) = page_mapper.translate(addr).unwrap();
         self.submit_trb_split(arc_pipe.clone(), phys.add(offset), len, false);
@@ -1542,15 +1547,14 @@ pub fn init() {
             let phys = PhysicalAddress::new(addr);
             let virt = unsafe { CurrentRmmArch::phys_to_virt(phys) };
             let mut frame_allocator = FRAME_ALLOCATOR.lock();
-            let mut page_mapper = unsafe {
-                PageMapper::<CurrentRmmArch, _>::current(TableKind::Kernel, &mut *frame_allocator)
-            };
+            let mut page_mapper =
+                unsafe { KernelPageMapper::current(TableKind::Kernel, &mut *frame_allocator) };
             for offset in (0..size).step_by(PAGE_SIZE) {
                 unsafe {
                     page_mapper.map_phys(
                         virt.add(offset),
                         phys.add(offset),
-                        PageFlags::new().write(true),
+                        PageFlags::<CurrentRmmArch>::new().write(true),
                     )
                 };
             }

@@ -184,7 +184,7 @@ unsafe fn new_tables<A: Arch>(areas: &'static [MemoryArea]) {
 
         {
             // Map all physical areas at PHYS_OFFSET
-            let mut mapper = PageMapper::<A, _>::create(TableKind::Kernel, &mut bump_allocator)
+            let mut mapper = KernelPageMapper::create(TableKind::Kernel, &mut bump_allocator)
                 .expect("failed to create Mapper");
             for area in areas.iter() {
                 for i in 0..area.size / A::PAGE_SIZE {
@@ -231,7 +231,7 @@ unsafe fn new_tables<A: Arch>(areas: &'static [MemoryArea]) {
             }
         }
 
-        let mut mapper = PageMapper::<A, _>::current(TableKind::Kernel, &mut allocator);
+        let mut mapper = KernelPageMapper::current(TableKind::Kernel, &mut allocator);
         let mut flush_all = PageFlushAll::new();
         for i in 0..16 {
             let virt = VirtualAddress::new(MEGABYTE + i * A::PAGE_SIZE);

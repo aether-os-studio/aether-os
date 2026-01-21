@@ -1,10 +1,17 @@
-use core::{cell::SyncUnsafeCell, sync::atomic::AtomicUsize};
+use core::sync::atomic::AtomicUsize;
 
-use crate::arch::{CurrentRmmArch, rmm::page_flags};
+use crate::{
+    arch::{CurrentRmmArch, rmm::page_flags},
+    memory::{
+        DummyFrameAllocator,
+        mapper::KernelPageMapper,
+        page::{PAGES, Page, PageManager},
+    },
+};
 use limine::{memory_map::EntryType, request::MemoryMapRequest, response::MemoryMapResponse};
 use rmm::{
-    Arch, BuddyAllocator, BumpAllocator, MemoryArea, PageMapper, PhysicalAddress, TableKind,
-    VirtualAddress,
+    Arch, BuddyAllocator, BumpAllocator, FrameAllocator, FrameCount, MemoryArea, PhysicalAddress,
+    TableKind, VirtualAddress,
 };
 use spin::{Lazy, Mutex};
 
@@ -32,22 +39,14 @@ pub fn align_down(x: usize) -> usize {
     x / PAGE_SIZE * PAGE_SIZE
 }
 
-static NULL_AREAS: SyncUnsafeCell<[rmm::MemoryArea; 1]> = SyncUnsafeCell::new(
-    [rmm::MemoryArea {
-        base: PhysicalAddress::new(0),
-        size: 0,
-    }; 1],
-);
-
 pub static KERNEL_PAGE_TABLE_PHYS: AtomicUsize = AtomicUsize::new(0);
 
 unsafe fn map_memory<A: Arch>(
     mut bump_allocator: &mut BumpAllocator<A>,
     memmap_response: &MemoryMapResponse,
 ) {
-    let mut null_bump_allocator = BumpAllocator::<A>::new(unsafe { &*NULL_AREAS.get() }, 0);
-    let old_mapper = PageMapper::<A, _>::current(TableKind::Kernel, &mut null_bump_allocator);
-    let mut mapper = PageMapper::<A, _>::create(TableKind::Kernel, &mut bump_allocator)
+    let old_mapper = KernelPageMapper::<A, _>::current(TableKind::Kernel, DummyFrameAllocator);
+    let mut mapper = KernelPageMapper::<A, _>::create(TableKind::Kernel, &mut bump_allocator)
         .expect("failed to create Mapper");
 
     let start = align_down(crate::kernel_executable_offsets::__start());
@@ -87,7 +86,7 @@ unsafe fn map_memory<A: Arch>(
 pub static FRAME_ALLOCATOR: Lazy<Mutex<BuddyAllocator<CurrentRmmArch>>> = Lazy::new(|| {
     let memmap_response = MEMMAP_REQUEST.get_response().unwrap();
 
-    let areas = &mut unsafe { *crate::memory::AREAS.get() };
+    let areas = unsafe { crate::memory::AREAS.get().as_mut_unchecked() };
     let mut area_i = 0;
 
     for area in memmap_response.entries().iter() {
@@ -108,9 +107,30 @@ pub static FRAME_ALLOCATOR: Lazy<Mutex<BuddyAllocator<CurrentRmmArch>>> = Lazy::
     unsafe { crate::memory::AREA_COUNT.get().write(area_i as u16) };
 
     let areas = crate::memory::areas();
+    let last_area = areas.last().unwrap();
+    let memory_size = last_area.base.data() + last_area.size;
+    let memory_page_count = memory_size.div_ceil(PAGE_SIZE);
     let mut bump_allocator = BumpAllocator::<CurrentRmmArch>::new(areas, 0);
 
-    unsafe { map_memory(&mut bump_allocator, memmap_response) };
+    unsafe { map_memory::<CurrentRmmArch>(&mut bump_allocator, memmap_response) };
+
+    let pages_phys_start = unsafe {
+        bump_allocator.allocate(FrameCount::new(
+            (memory_page_count * size_of::<Page>()).div_ceil(PAGE_SIZE),
+        ))
+    }
+    .expect("No memory can be allocated for pages array");
+    let pages_virt_start = unsafe { CurrentRmmArch::phys_to_virt(pages_phys_start) };
+    unsafe {
+        core::ptr::write_bytes(
+            pages_virt_start.data() as *mut u8,
+            0,
+            memory_page_count * size_of::<Page>(),
+        );
+    }
+    let pages = pages_virt_start.data() as *mut Page;
+    let page_manager = PageManager::new(pages, memory_page_count);
+    *PAGES.lock() = Some(page_manager);
 
     let buddy_allocator =
         unsafe { BuddyAllocator::new(bump_allocator) }.expect("Failed to init mm");

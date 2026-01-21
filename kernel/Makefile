@@ -27,6 +27,9 @@ $(BUILD)/kernel-$(ARCH).elf:
 clippy:
 	cargo clippy --target $(RUST_TARGET) -Zbuild-std=core,alloc
 
+fmt:
+	cargo fmt
+
 limine/limine:
 	rm -rf limine
 	git clone https://github.com/limine-bootloader/limine.git --branch=v10.x-binary --depth=1

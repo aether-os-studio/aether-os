@@ -11,5 +11,8 @@ all:
 clippy:
 	$(MAKE) -C kernel clippy
 
+fmt:
+	$(MAKE) -C kernel fmt
+
 run:
 	$(MAKE) -C kernel run

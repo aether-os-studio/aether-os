@@ -28,3 +28,5 @@ impl FrameAllocator for DummyFrameAllocator {
 }
 
 pub mod heap;
+pub mod mapper;
+pub mod page;

@@ -7,10 +7,13 @@ use pci_types::{
     HeaderType, Interface, MAX_BARS, PciHeader, PciPciBridgeHeader, SubClass, SubsystemId,
     SubsystemVendorId, VendorId, device_type::DeviceType,
 };
-use rmm::{Arch, PageFlags, PageMapper, PhysicalAddress, VirtualAddress};
+use rmm::{Arch, PageFlags, PhysicalAddress, VirtualAddress};
 use spin::Mutex;
 
-use crate::{arch::CurrentRmmArch, drivers::acpi::ACPI_TABLES, init::memory::FRAME_ALLOCATOR};
+use crate::{
+    arch::CurrentRmmArch, drivers::acpi::ACPI_TABLES, init::memory::FRAME_ALLOCATOR,
+    memory::mapper::KernelPageMapper,
+};
 
 pub struct PciAccess<'a>(&'a PciConfigRegions<Global>);
 
@@ -38,7 +41,10 @@ impl<'a> PciAccess<'a> {
 
         let mut frame_allocator = FRAME_ALLOCATOR.lock();
         let mut mapper = unsafe {
-            PageMapper::<CurrentRmmArch, _>::current(rmm::TableKind::Kernel, &mut *frame_allocator)
+            KernelPageMapper::<CurrentRmmArch, _>::current(
+                rmm::TableKind::Kernel,
+                &mut *frame_allocator,
+            )
         };
 
         if let Some(flusher) = unsafe {

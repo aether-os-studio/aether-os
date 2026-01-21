@@ -2,13 +2,12 @@ use crate::{
     arch::CurrentRmmArch,
     fs::vfs::file::ArcFile,
     init::memory::{FRAME_ALLOCATOR, KERNEL_PAGE_TABLE_PHYS, PAGE_SIZE, align_down, align_up},
+    memory::mapper::KernelPageMapper,
     task::{ArcTask, Task, add_task},
 };
 use alloc::{string::String, vec, vec::Vec};
 use core::mem::size_of;
-use rmm::{
-    Arch, FrameAllocator, PageFlags, PageMapper, PhysicalAddress, TableKind, VirtualAddress,
-};
+use rmm::{Arch, FrameAllocator, PageFlags, PhysicalAddress, TableKind, VirtualAddress};
 
 const USER_STACK_TOP: usize = 0x0000_7000_0000_0000;
 const USER_STACK_SIZE: usize = 8 * 1024 * 1024;
@@ -132,13 +131,8 @@ pub fn create_user_task(
     let user_page_table = create_user_page_table();
 
     let mut frame_allocator = FRAME_ALLOCATOR.lock();
-    let mut page_mapper = unsafe {
-        PageMapper::<CurrentRmmArch, _>::new(
-            TableKind::User,
-            user_page_table,
-            &mut *frame_allocator,
-        )
-    };
+    let mut page_mapper =
+        unsafe { KernelPageMapper::new(TableKind::User, user_page_table, &mut *frame_allocator) };
 
     let elf_result = load_elf(&file, &mut page_mapper, 0)?;
 
@@ -186,7 +180,7 @@ pub fn create_user_task(
 
 fn load_elf<A: FrameAllocator>(
     file: &ArcFile,
-    page_mapper: &mut PageMapper<CurrentRmmArch, A>,
+    page_mapper: &mut KernelPageMapper<CurrentRmmArch, A>,
     load_base: usize,
 ) -> Result<ElfLoadResult, &'static str> {
     let mut header_buf = [0u8; size_of::<Elf64Header>()];
@@ -272,7 +266,7 @@ fn load_elf<A: FrameAllocator>(
 
 fn load_segment<A: FrameAllocator>(
     file: &ArcFile,
-    page_mapper: &mut PageMapper<CurrentRmmArch, A>,
+    page_mapper: &mut KernelPageMapper<CurrentRmmArch, A>,
     ph: &Elf64ProgramHeader,
     load_base: usize,
 ) -> Result<(), &'static str> {
@@ -322,7 +316,7 @@ fn load_segment<A: FrameAllocator>(
 }
 
 fn allocate_user_stack<A: FrameAllocator>(
-    page_mapper: &mut PageMapper<CurrentRmmArch, A>,
+    page_mapper: &mut KernelPageMapper<CurrentRmmArch, A>,
     stack_bottom: usize,
     stack_size: usize,
 ) -> Result<(), &'static str> {
@@ -342,7 +336,7 @@ fn allocate_user_stack<A: FrameAllocator>(
 }
 
 fn setup_user_stack<A: FrameAllocator>(
-    page_mapper: &mut PageMapper<CurrentRmmArch, A>,
+    page_mapper: &mut KernelPageMapper<CurrentRmmArch, A>,
     stack_top: usize,
     argv: &[String],
     envp: &[String],
@@ -457,7 +451,7 @@ fn setup_user_stack<A: FrameAllocator>(
 }
 
 fn write_to_user_space<A: FrameAllocator>(
-    page_mapper: &mut PageMapper<CurrentRmmArch, A>,
+    page_mapper: &mut KernelPageMapper<CurrentRmmArch, A>,
     vaddr: usize,
     data: &[u8],
 ) -> Result<(), &'static str> {
@@ -487,7 +481,7 @@ fn write_to_user_space<A: FrameAllocator>(
 }
 
 fn write_usize<A: FrameAllocator>(
-    page_mapper: &mut PageMapper<CurrentRmmArch, A>,
+    page_mapper: &mut KernelPageMapper<CurrentRmmArch, A>,
     vaddr: usize,
     value: usize,
 ) -> Result<(), &'static str> {

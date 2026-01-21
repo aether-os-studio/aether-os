@@ -1,12 +1,13 @@
 use core::ptr::NonNull;
 
 use crate::{
-    arch::{CurrentRmmArch, CurrentTimeArch, rmm::page_flags, time::TimeArch},
+    arch::{CurrentRmmArch, CurrentTimeArch, time::TimeArch},
     init::memory::{FRAME_ALLOCATOR, PAGE_SIZE, align_down, align_up},
+    memory::mapper::KernelPageMapper,
 };
 use acpi::AcpiTables;
 use limine::request::RsdpRequest;
-use rmm::{Arch, PageMapper, PhysicalAddress};
+use rmm::{Arch, PageFlags, PhysicalAddress};
 use spin::{Lazy, Mutex};
 
 #[derive(Clone)]
@@ -26,14 +27,16 @@ impl acpi::Handler for AcpiHandler {
         let size = align_up(size);
 
         let mut frame_allocator = FRAME_ALLOCATOR.lock();
-        let mut mapper =
-            PageMapper::<CurrentRmmArch, _>::current(rmm::TableKind::Kernel, &mut *frame_allocator);
+        let mut mapper = KernelPageMapper::<CurrentRmmArch, _>::current(
+            rmm::TableKind::Kernel,
+            &mut *frame_allocator,
+        );
 
         for i in (0..size).step_by(PAGE_SIZE) {
             if let Some(flusher) = mapper.map_phys(
                 virtual_address.add(i),
                 physical_address.add(i),
-                page_flags(virtual_address.add(i)),
+                PageFlags::new().write(true),
             ) {
                 flusher.flush();
             }

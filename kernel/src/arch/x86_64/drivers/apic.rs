@@ -5,7 +5,7 @@ use core::{
 
 use acpi::sdt::madt::{Madt, MadtEntry};
 use alloc::vec::Vec;
-use rmm::{Arch, BuddyAllocator, PageFlags, PageMapper, PhysicalAddress};
+use rmm::{Arch, PageFlags, PhysicalAddress};
 use spin::Mutex;
 use x2apic::{
     ioapic::RedirectionTableEntry,
@@ -23,6 +23,7 @@ use crate::{
     consts::SCHED_HZ,
     drivers::acpi::ACPI_TABLES,
     init::memory::FRAME_ALLOCATOR,
+    memory::mapper::KernelPageMapper,
 };
 
 pub struct IoApic {
@@ -126,7 +127,7 @@ pub fn init() {
 
     let mut frame_allocator = FRAME_ALLOCATOR.lock();
     let mut mapper = unsafe {
-        PageMapper::<CurrentRmmArch, &mut BuddyAllocator<CurrentRmmArch>>::current(
+        KernelPageMapper::<CurrentRmmArch, _>::current(
             rmm::TableKind::Kernel,
             &mut *frame_allocator,
         )
