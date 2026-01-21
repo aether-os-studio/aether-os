@@ -3,8 +3,10 @@ pub mod cache;
 pub mod drivers;
 pub mod gdt;
 pub mod irq;
+pub mod nr;
 pub mod rmm;
 pub mod smp;
+pub mod syscall;
 pub mod time;
 
 use crate::arch::smp::LAPICID_TO_CPUINFO;
@@ -14,7 +16,11 @@ use crate::task::Task;
 pub use self::cache::X8664CacheArch as CurrentCacheArch;
 pub use self::irq::Ptrace;
 pub use self::irq::X8664IrqArch as CurrentIrqArch;
+pub use self::irq::kernel_thread_entry;
+pub use self::irq::return_from_interrupt;
+pub use self::nr::*;
 pub use self::smp::get_lapicid as get_archid;
+pub use self::syscall::X8664SyscallArch as CurrentSyscallArch;
 pub use self::time::X8664TimeArch as CurrentTimeArch;
 use ::rmm::Arch;
 use ::rmm::TableKind;
@@ -79,6 +85,8 @@ pub struct ArchContext {
 
 #[unsafe(no_mangle)]
 unsafe extern "C" fn do_switch_to(prev: *mut Task, next: *const Task) {
+    GsBase::write(x86_64::VirtAddr::new(next as u64));
+
     let prev = prev.as_mut_unchecked();
     let next = next.as_ref_unchecked();
 
@@ -90,7 +98,7 @@ unsafe extern "C" fn do_switch_to(prev: *mut Task, next: *const Task) {
     prev.arch_context.gsbase = GsBase::read().as_u64() as usize;
 
     FsBase::write(x86_64::VirtAddr::new(next.arch_context.fsbase as u64));
-    GsBase::write(x86_64::VirtAddr::new(next.arch_context.gsbase as u64));
+    // GsBase::write(x86_64::VirtAddr::new(next.arch_context.gsbase as u64));
 
     prev.arch_context.fpu.save();
     next.arch_context.fpu.restore();
@@ -101,7 +109,6 @@ use core::mem::offset_of;
 #[unsafe(naked)]
 pub extern "C" fn switch_to_inner(prev: *mut Task, next: *const Task) {
     core::arch::naked_asm!(
-        "push rbp",
         "mov [rdi + {sp_off}], rsp",
         "mov rsp, [rsi + {sp_off}]",
         "lea rax, [rip + 1f]",
@@ -109,7 +116,6 @@ pub extern "C" fn switch_to_inner(prev: *mut Task, next: *const Task) {
         "push qword ptr [rsi + {ip_off}]",
         "jmp do_switch_to",
         "1:",
-        "pop rbp",
         "ret",
         sp_off = const(offset_of!(Task, arch_context) + offset_of!(ArchContext, sp)),
         ip_off = const(offset_of!(Task, arch_context) + offset_of!(ArchContext, ip)),
@@ -144,4 +150,5 @@ pub fn early_init() {
     crate::smp::init();
     crate::arch::x86_64::irq::init();
     crate::arch::x86_64::drivers::apic::init();
+    crate::arch::x86_64::syscall::init();
 }

@@ -14,6 +14,8 @@ pub trait IrqRegsArch {
 
     fn get_syscall_idx(&self) -> u64;
     fn get_syscall_args(&self) -> (u64, u64, u64, u64, u64, u64);
+
+    fn set_user_space(&mut self, user: bool);
 }
 
 pub trait IrqArch {

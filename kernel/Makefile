@@ -13,7 +13,7 @@ MANIFEST := $(SOURCE)/Cargo.toml
 
 export BUILD = $(SOURCE)/build
 
-QEMUFLAGS ?= -m 4G -serial stdio
+QEMUFLAGS ?= -m 4G -serial stdio -d cpu_reset
 ifneq ($(DEBUG), 0)
 QEMUFLAGS += -s -S
 endif
@@ -56,8 +56,8 @@ ifeq ($(ARCH),loongarch64)
 endif
 
 rootfs-$(ARCH).img:
-	dd if=/dev/zero bs=1M count=0 seek=1024 of=rootfs-$(ARCH).img
-	mkfs.ext2 -b 1024 -F -q -d $(SOURCE)/../user/rootfs-$(ARCH) rootfs-$(ARCH).img
+	dd if=/dev/zero bs=1M count=0 seek=2048 of=rootfs-$(ARCH).img
+	sudo mkfs.ext2 -b 1024 -F -q -d $(SOURCE)/../user/rootfs-$(ARCH) rootfs-$(ARCH).img
 
 edk2-ovmf:
 	curl -L https://github.com/osdev0/edk2-ovmf-nightly/releases/download/nightly-20260105T013525Z/edk2-ovmf.tar.gz | gunzip | tar -xf -

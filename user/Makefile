@@ -1,3 +1,5 @@
-all:
-	mkdir -p rootfs-$(ARCH)
-	echo "Hello fs world!" > rootfs-$(ARCH)/hello.txt
+export SYSROOT := rootfs-$(ARCH)
+
+$(SYSROOT):
+	mkdir -p $(SYSROOT)
+	sh ports.sh

@@ -9,4 +9,5 @@ pub use self::aarch64::*;
 
 pub mod cache;
 pub mod irq;
+pub mod syscall;
 pub mod time;

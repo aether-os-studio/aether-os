@@ -48,6 +48,16 @@ impl PhysicalAddress {
         Self(self.0 - offset)
     }
 }
+impl core::ops::AddAssign<usize> for PhysicalAddress {
+    fn add_assign(&mut self, rhs: usize) {
+        self.0 += rhs;
+    }
+}
+impl core::ops::SubAssign<usize> for PhysicalAddress {
+    fn sub_assign(&mut self, rhs: usize) {
+        self.0 -= rhs;
+    }
+}
 
 /// Virtual memory address
 #[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -87,6 +97,16 @@ impl VirtualAddress {
 impl core::fmt::Debug for VirtualAddress {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "[virt {:#0x}]", self.data())
+    }
+}
+impl core::ops::AddAssign<usize> for VirtualAddress {
+    fn add_assign(&mut self, rhs: usize) {
+        self.0 += rhs;
+    }
+}
+impl core::ops::SubAssign<usize> for VirtualAddress {
+    fn sub_assign(&mut self, rhs: usize) {
+        self.0 -= rhs;
     }
 }
 

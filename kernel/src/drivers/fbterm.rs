@@ -72,8 +72,7 @@ pub struct TerminalWriter;
 
 impl fmt::Write for TerminalWriter {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        TERMINAL.lock().process(s.as_bytes());
-        Ok(())
+        TERMINAL.lock().write_str(s)
     }
 }
 

@@ -1,7 +1,7 @@
 use crate::{
     arch::CurrentRmmArch,
     fs::vfs::file::ArcFile,
-    init::memory::{FRAME_ALLOCATOR, KERNEL_PAGE_TABLE_PHYS, PAGE_SIZE},
+    init::memory::{FRAME_ALLOCATOR, KERNEL_PAGE_TABLE_PHYS, PAGE_SIZE, align_down, align_up},
     task::{ArcTask, Task, add_task},
 };
 use alloc::{string::String, vec, vec::Vec};
@@ -11,8 +11,8 @@ use rmm::{
 };
 
 const USER_STACK_TOP: usize = 0x0000_7000_0000_0000;
-const USER_STACK_SIZE: usize = 16 * 1024 * 1024;
-const INTERP_LOAD_BASE: usize = 0x0000_7000_0000_0000;
+const USER_STACK_SIZE: usize = 8 * 1024 * 1024;
+const INTERP_LOAD_BASE: usize = 0x0000_7fff_0000_0000;
 const PIE_LOAD_BASE: usize = 0x0000_7fff_ff00_0000;
 
 type PageFlagsType = PageFlags<CurrentRmmArch>;
@@ -28,12 +28,18 @@ fn create_user_page_table() -> PhysicalAddress {
         PhysicalAddress::new(KERNEL_PAGE_TABLE_PHYS.load(core::sync::atomic::Ordering::SeqCst));
     let new_page_table_virt = unsafe { CurrentRmmArch::phys_to_virt(new_page_table) };
     let kernel_page_table_virt = unsafe { CurrentRmmArch::phys_to_virt(kernel_page_table) };
+    #[cfg(any(target_arch = "x86_64", target_arch = "riscv64"))]
     unsafe {
         core::ptr::copy_nonoverlapping(
             kernel_page_table_virt.add(PAGE_SIZE / 2).data() as *const u8,
             new_page_table_virt.add(PAGE_SIZE / 2).data() as *mut u8,
             PAGE_SIZE / 2,
-        )
+        );
+        core::ptr::write_bytes(new_page_table_virt.data() as *mut u8, 0, PAGE_SIZE / 2);
+    };
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "riscv64")))]
+    unsafe {
+        core::ptr::write_bytes(new_page_table_virt.data() as *mut u8, 0, PAGE_SIZE);
     };
     new_page_table
 }
@@ -162,12 +168,14 @@ pub fn create_user_task(
         interp_base,
     )?;
 
+    drop(frame_allocator);
+
     let task = Task::new(name);
 
     task.write().page_table_addr = user_page_table;
 
     {
-        let task_guard = task.read();
+        let mut task_guard = task.write();
         task_guard.set_user_context_info(entry_point, VirtualAddress::new(stack_pointer), None);
     }
 
@@ -275,8 +283,8 @@ fn load_segment<A: FrameAllocator>(
     let vaddr_start = load_base + ph.p_vaddr as usize;
     let vaddr_end = vaddr_start + ph.p_memsz as usize;
 
-    let page_start = vaddr_start & !(PAGE_SIZE - 1);
-    let page_end = (vaddr_end + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
+    let page_start = align_down(vaddr_start);
+    let page_end = align_up(vaddr_end);
 
     let flags = make_page_flags(
         ph.p_flags & PF_R != 0,
@@ -290,7 +298,7 @@ fn load_segment<A: FrameAllocator>(
             page_mapper
                 .map(VirtualAddress::new(vaddr), flags)
                 .ok_or("Failed to map ELF segment")?
-                .flush();
+                .ignore();
         }
     }
 
@@ -304,6 +312,10 @@ fn load_segment<A: FrameAllocator>(
         }
 
         write_to_user_space(page_mapper, vaddr_start, &buf)?;
+    }
+    if ph.p_memsz > ph.p_filesz {
+        let buf = vec![0u8; (ph.p_memsz - ph.p_filesz) as usize];
+        write_to_user_space(page_mapper, vaddr_start + ph.p_filesz as usize, &buf)?;
     }
 
     Ok(())
@@ -322,7 +334,7 @@ fn allocate_user_stack<A: FrameAllocator>(
             page_mapper
                 .map(VirtualAddress::new(vaddr), flags)
                 .ok_or("Failed to map stack page")?
-                .flush();
+                .ignore();
         }
     }
 

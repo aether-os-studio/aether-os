@@ -15,7 +15,10 @@ use crate::{
     },
     init::memory::KERNEL_PAGE_TABLE_PHYS,
     smp::{BSP_CPUARCHID, CPU_COUNT, CPUID_TO_ARCHID, MP_REQUEST},
-    task::sched::{SCHEDULERS, Scheduler},
+    task::{
+        get_current_task,
+        sched::{SCHEDULERS, Scheduler},
+    },
 };
 
 unsafe extern "C" {
@@ -80,13 +83,19 @@ extern "C" fn ap_kmain(cpu: &Cpu) -> ! {
     }
 
     let timer_initial = LAPIC_TIMER_INITIAL.load(core::sync::atomic::Ordering::SeqCst);
-    let mut lapic_guard = LAPIC.lock();
-    let lapic = lapic_guard.as_mut().unwrap();
-    unsafe {
-        lapic.enable();
-        lapic.set_timer_initial(timer_initial);
-    };
-    drop(lapic_guard);
+
+    if let Some(lapic) = LAPIC.lock().as_mut() {
+        unsafe {
+            lapic.enable();
+            lapic.set_timer_initial(timer_initial);
+        };
+    }
+
+    crate::arch::x86_64::syscall::init();
+
+    while get_current_task().is_none() {
+        spin_loop();
+    }
 
     loop {
         CurrentIrqArch::enable_global_irq();

@@ -1,11 +1,15 @@
 use spin::Lazy;
 use x86_64::{
     registers::control::Cr2,
-    structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode},
+    structures::idt::{InterruptDescriptorTable, PageFaultErrorCode},
 };
 
 use crate::{
-    arch::irq::{IrqArch, IrqRegsArch},
+    arch::{
+        drivers::apic::LAPIC,
+        gdt::Selectors,
+        irq::{IrqArch, IrqRegsArch},
+    },
     task::schedule,
 };
 
@@ -27,7 +31,7 @@ pub struct Ptrace {
     rdi: u64,
     rbp: u64,
     rax: u64,
-    func: u64,
+    reserved: u64,
     errcode: u64,
     rip: u64,
     cs: u64,
@@ -35,13 +39,38 @@ pub struct Ptrace {
     rsp: u64,
     ss: u64,
 }
+impl core::fmt::Display for Ptrace {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "r15: {:#x}\n", self.r15)?;
+        write!(f, "r14: {:#x}\n", self.r14)?;
+        write!(f, "r13: {:#x}\n", self.r13)?;
+        write!(f, "r12: {:#x}\n", self.r12)?;
+        write!(f, "r11: {:#x}\n", self.r11)?;
+        write!(f, "r10: {:#x}\n", self.r10)?;
+        write!(f, "r9: {:#x}\n", self.r9)?;
+        write!(f, "r8: {:#x}\n", self.r8)?;
+        write!(f, "rbx: {:#x}\n", self.rbx)?;
+        write!(f, "rcx: {:#x}\n", self.rcx)?;
+        write!(f, "rdx: {:#x}\n", self.rdx)?;
+        write!(f, "rsi: {:#x}\n", self.rsi)?;
+        write!(f, "rdi: {:#x}\n", self.rdi)?;
+        write!(f, "rbp: {:#x}\n", self.rbp)?;
+        write!(f, "rax: {:#x}\n", self.rax)?;
+        write!(f, "rip: {:#x}\n", self.rip)?;
+        write!(f, "cs: {:#x}\n", self.cs)?;
+        write!(f, "rflags: {:#x}\n", self.rflags)?;
+        write!(f, "rsp: {:#x}\n", self.rsp)?;
+        write!(f, "ss: {:#x}", self.ss)?;
+        Ok(())
+    }
+}
 
 #[macro_export]
 macro_rules! push_context {
     () => {
         concat!(
             r#"
-            sub rsp, 0x10
+            sub rsp, 0x8
             push rax
             push rbp
             push rdi
@@ -141,6 +170,17 @@ impl IrqRegsArch for Ptrace {
         self.r8 = args.4;
         self.r9 = args.5;
     }
+
+    fn set_user_space(&mut self, user: bool) {
+        self.rflags = 0x202;
+        let (code, data) = if user {
+            Selectors::get_user_segments()
+        } else {
+            Selectors::get_kernel_segments()
+        };
+        self.cs = code.0 as u64;
+        self.ss = data.0 as u64;
+    }
 }
 
 pub struct X8664IrqArch;
@@ -155,36 +195,67 @@ impl IrqArch for X8664IrqArch {
     }
 }
 
-extern "x86-interrupt" fn segment_not_present(frame: InterruptStackFrame, code: u64) {
-    error!("Exception: Segment Not Present\n{frame:#?}");
-    error!("Error Code: {code:#x}");
-    panic!("Unrecoverable fault occured, halting!");
+#[unsafe(no_mangle)]
+extern "C" fn do_general_protection_fault(regs: *mut Ptrace) {
+    let regs = unsafe { regs.as_mut_unchecked() };
+    error!("Exception: General Protection Fault");
+    panic!("{}", regs);
 }
 
-extern "x86-interrupt" fn general_protection_fault(frame: InterruptStackFrame, code: u64) {
-    error!("Exception: General Protection Fault\n{frame:#?}");
-    error!("Error Code: {code:#x}");
-    x86_64::instructions::hlt();
+#[unsafe(naked)]
+extern "C" fn general_protection_fault() {
+    core::arch::naked_asm!(
+        push_context!(),
+        "mov rdi, rsp",
+        "call do_general_protection_fault",
+        pop_context!(),
+        "iretq",
+    );
 }
 
-extern "x86-interrupt" fn invalid_opcode(frame: InterruptStackFrame) {
-    error!("Exception: Invalid Opcode\n{frame:#?}");
-    x86_64::instructions::hlt();
+#[unsafe(no_mangle)]
+extern "C" fn do_invalid_opcode(regs: *mut Ptrace) {
+    let regs = unsafe { regs.as_mut_unchecked() };
+    error!("Exception: Invalid Opcode");
+    panic!("{}", regs);
 }
 
-extern "x86-interrupt" fn breakpoint(frame: InterruptStackFrame) {
-    debug!("Exception: Breakpoint\n{frame:#?}");
+#[unsafe(naked)]
+extern "C" fn invalid_opcode() -> ! {
+    core::arch::naked_asm!(
+        "sub rsp, 0x8",
+        push_context!(),
+        "mov rdi, rsp",
+        "call do_invalid_opcode",
+        pop_context!(),
+        "iretq",
+    );
 }
 
-extern "x86-interrupt" fn double_fault(frame: InterruptStackFrame, code: u64) -> ! {
-    error!("Exception: Double Fault\n{frame:#?}");
-    error!("Error Code: {code:#x}");
-    panic!("Unrecoverable fault occured, halting!");
+#[unsafe(no_mangle)]
+extern "C" fn do_double_fault(regs: *mut Ptrace) {
+    let regs = unsafe { regs.as_mut_unchecked() };
+    error!("Exception: Double Fault");
+    panic!("{}\nUnrecoverable fault occured, halting!", regs);
 }
 
-extern "x86-interrupt" fn page_fault(frame: InterruptStackFrame, code: PageFaultErrorCode) {
-    warn!("Exception: Page Fault\n{frame:#?}");
-    warn!("Error Code: {code:#x}");
+#[unsafe(naked)]
+extern "C" fn double_fault() -> ! {
+    core::arch::naked_asm!(
+        push_context!(),
+        "mov rdi, rsp",
+        "call do_double_fault",
+        pop_context!(),
+        "iretq",
+    );
+}
+
+#[unsafe(no_mangle)]
+extern "C" fn do_page_fault(regs: *mut Ptrace) {
+    let regs = unsafe { regs.as_mut_unchecked() };
+    warn!("Exception: Page Fault");
+    let page_fault_errcode = PageFaultErrorCode::from_bits_truncate(regs.errcode);
+    warn!("Page Fault Error Code: {:#?}", page_fault_errcode);
     match Cr2::read() {
         Ok(address) => {
             warn!("Fault Address: {address:#x}");
@@ -193,7 +264,18 @@ extern "x86-interrupt" fn page_fault(frame: InterruptStackFrame, code: PageFault
             warn!("Invalid virtual address: {error:?}");
         }
     }
-    panic!("Cannot recover from page fault, halting!");
+    panic!("{}", regs);
+}
+
+#[unsafe(naked)]
+extern "C" fn page_fault() {
+    core::arch::naked_asm!(
+        push_context!(),
+        "mov rdi, rsp",
+        "call do_page_fault",
+        pop_context!(),
+        "iretq",
+    );
 }
 
 pub const INTERRUPT_INDEX_OFFSET: u8 = 32;
@@ -209,27 +291,54 @@ pub enum InterruptIndex {
 pub static IDT: Lazy<InterruptDescriptorTable> = Lazy::new(|| {
     let mut idt = InterruptDescriptorTable::new();
 
-    idt.breakpoint.set_handler_fn(breakpoint);
-    idt.segment_not_present.set_handler_fn(segment_not_present);
-    idt.invalid_opcode.set_handler_fn(invalid_opcode);
-    idt.page_fault.set_handler_fn(page_fault);
-    idt.general_protection_fault
-        .set_handler_fn(general_protection_fault);
-    idt.double_fault.set_handler_fn(double_fault);
+    unsafe {
+        idt.invalid_opcode
+            .set_handler_addr(x86_64::VirtAddr::new(invalid_opcode as *const () as u64));
+        idt.page_fault
+            .set_handler_addr(x86_64::VirtAddr::new(page_fault as *const () as u64));
+        idt.general_protection_fault
+            .set_handler_addr(x86_64::VirtAddr::new(
+                general_protection_fault as *const () as u64,
+            ));
+        idt.double_fault
+            .set_handler_addr(x86_64::VirtAddr::new(double_fault as *const () as u64));
 
-    idt[InterruptIndex::Timer as u8].set_handler_fn(timer_interrupt);
+        idt[InterruptIndex::Timer as u8]
+            .set_handler_addr(x86_64::VirtAddr::new(timer_interrupt as *const () as u64));
+    }
 
     idt
 });
 
 #[unsafe(no_mangle)]
 extern "C" fn do_timer_interrupt(_regs: *mut Ptrace) {
+    if let Some(lapic) = LAPIC.lock().as_mut() {
+        unsafe { lapic.end_of_interrupt() };
+    }
     schedule();
 }
 
 #[unsafe(naked)]
-pub extern "x86-interrupt" fn timer_interrupt(_frame: InterruptStackFrame) {
+pub extern "C" fn kernel_thread_entry() {
     core::arch::naked_asm!(
+        pop_context!(),
+        "add rsp, 0x28",
+        "call rdx",
+        "mov rdi, rax",
+        "jmp {exit_current}",
+        exit_current = sym crate::task::exit_current,
+    );
+}
+
+#[unsafe(naked)]
+pub extern "C" fn return_from_interrupt() {
+    core::arch::naked_asm!(pop_context!(), "iretq");
+}
+
+#[unsafe(naked)]
+pub extern "C" fn timer_interrupt() {
+    core::arch::naked_asm!(
+        "sub rsp, 0x8",
         push_context!(),
         "mov rdi, rsp",
         "call do_timer_interrupt",

@@ -5,8 +5,8 @@
 #![allow(clippy::new_ret_no_self)]
 #![allow(clippy::too_many_arguments)]
 #![allow(unsafe_op_in_unsafe_fn)]
-#![feature(abi_x86_interrupt)]
 #![feature(allocator_api)]
+#![feature(int_roundings)]
 #![feature(ptr_as_ref_unchecked)]
 #![feature(sync_unsafe_cell)]
 
@@ -43,6 +43,7 @@ pub mod fs;
 pub mod init;
 pub mod memory;
 pub mod smp;
+pub mod syscall;
 pub mod task;
 pub mod utils;
 
