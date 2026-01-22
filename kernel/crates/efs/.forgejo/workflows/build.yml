@@ -1,0 +1,44 @@
+name: Build
+
+on: [push, workflow_dispatch]
+
+env:
+  RUST_BACKTRACE: "1"
+  RUSTDOCFLAGS: "--cfg docsrs -D warnings"
+
+jobs:
+
+  build:
+    runs-on: ${{ matrix.info.runner }}
+
+    strategy:
+      matrix:
+        info:
+          - target: x86_64-unknown-linux-gnu
+            runner: rust-latest-amd64
+          - target: i686-unknown-linux-gnu
+            runner: rust-latest-i386
+
+    steps:
+      - name: Install dependencies
+        run: apt-get update && apt-get install -y curl gcc git-lfs nodejs
+      - uses: actions/checkout@v4
+      - name: Checkout LFS objects
+        run: git lfs pull
+      - name: Format check
+        run: cargo fmt --check
+      - name: Lint check
+        run: |
+          cargo clippy --no-deps --target ${{ matrix.info.target }}
+          cargo clippy --all-features --no-deps --target ${{ matrix.info.target }}
+      - name: Build
+        run: |
+          cargo build --target ${{ matrix.info.target }}
+          cargo build --all-features --target ${{ matrix.info.target }}
+          cargo build --release --all-features --target ${{ matrix.info.target }}
+      - name: Tests
+        run: |
+          cargo test --all-features --target ${{ matrix.info.target }}
+          cargo test --release --all-features --target ${{ matrix.info.target }}
+      - name: Doc
+        run: cargo doc --all-features --document-private-items --no-deps --target ${{ matrix.info.target }}

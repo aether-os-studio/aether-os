@@ -58,9 +58,10 @@ ifeq ($(ARCH),loongarch64)
 	mcopy -i aether-$(ARCH).img@@1M limine/BOOTLOONGARCH64.EFI ::/EFI/BOOT
 endif
 
+.PHONY: rootfs-$(ARCH).img
 rootfs-$(ARCH).img:
 	dd if=/dev/zero bs=1M count=0 seek=2048 of=rootfs-$(ARCH).img
-	sudo mkfs.ext2 -b 1024 -F -q -d $(SOURCE)/../user/rootfs-$(ARCH) rootfs-$(ARCH).img
+	sudo mkfs.ext2 -F -q -d $(SOURCE)/../user/rootfs-$(ARCH) rootfs-$(ARCH).img
 
 edk2-ovmf:
 	curl -L https://github.com/osdev0/edk2-ovmf-nightly/releases/download/nightly-20260105T013525Z/edk2-ovmf.tar.gz | gunzip | tar -xf -

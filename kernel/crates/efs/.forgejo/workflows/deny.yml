@@ -1,0 +1,20 @@
+name: Deny
+
+on:
+  pull_request:
+    paths:
+      - '**/Cargo.lock'
+      - '**/Cargo.toml'
+  workflow_dispatch:
+
+jobs:
+  cargo-deny:
+    runs-on: debian-latest
+
+    steps:
+      - name: Install dependencies
+        run: apt-get update && apt-get install -y curl gcc git-lfs nodejs
+      - uses: actions/checkout@v4
+      - uses: https://github.com/EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check bans licenses sources

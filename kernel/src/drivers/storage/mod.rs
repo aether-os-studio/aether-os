@@ -1,6 +1,8 @@
 use alloc::{sync::Arc, vec::Vec};
 use spin::{Mutex, RwLock};
 
+use crate::utils::Dma;
+
 pub mod usb;
 
 pub trait BlockDeviceTrait: Send + Sync {
@@ -25,54 +27,105 @@ impl BlockDevice {
 
 impl BlockDevice {
     pub fn read_block(&mut self, start_byte: u64, buf: &mut [u8]) -> Result<(), &'static str> {
+        if buf.is_empty() {
+            return Ok(());
+        }
+
         let block_size = self.block_size() as usize;
         let mut block_dev = self.inner.write();
 
         let start = start_byte as usize;
         let end = start + buf.len();
 
-        let start_sector_read_start = start % block_size;
+        let start_block_id = start / block_size;
+        let end_block_id = (end - 1) / block_size;
 
-        let start_sector_id = start / block_size;
-        let end_sector_id = (end - 1) / block_size;
+        let mut temp_block = unsafe {
+            Dma::<[u8]>::zeroed_slice(block_size)
+                .expect("No memory for block device")
+                .cast_slice()
+        };
+        let mut buf_offset = 0;
 
-        let buffer_size = (end_sector_id - start_sector_id + 1) * block_size;
+        for block_id in start_block_id..=end_block_id {
+            block_dev.read_block(block_id as u64, &mut temp_block)?;
 
-        let mut buffer = vec![0; buffer_size];
-        block_dev.read_block(start_sector_id as u64, &mut buffer)?;
-        buf.copy_from_slice(unsafe {
-            core::slice::from_raw_parts(
-                buffer.as_ptr().byte_add(start_sector_read_start),
-                buf.len(),
-            )
-        });
+            let block_start_byte = block_id * block_size;
+
+            let offset_in_block = if block_id == start_block_id {
+                start - block_start_byte
+            } else {
+                0
+            };
+
+            let end_in_block = if block_id == end_block_id {
+                end - block_start_byte
+            } else {
+                block_size
+            };
+
+            let bytes_to_copy = end_in_block - offset_in_block;
+
+            buf[buf_offset..buf_offset + bytes_to_copy]
+                .copy_from_slice(&temp_block[offset_in_block..end_in_block]);
+
+            buf_offset += bytes_to_copy;
+        }
+
         Ok(())
     }
 
     pub fn write_block(&mut self, start_byte: u64, buf: &[u8]) -> Result<(), &'static str> {
+        if buf.is_empty() {
+            return Ok(());
+        }
+
         let block_size = self.block_size() as usize;
         let mut block_dev = self.inner.write();
 
         let start = start_byte as usize;
         let end = start + buf.len();
 
-        let start_sector_write_start = start % block_size;
+        let start_block_id = start / block_size;
+        let end_block_id = (end - 1) / block_size;
 
-        let start_sector_id = start / block_size;
-        let end_sector_id = (end - 1) / block_size;
-
-        let buffer_size = (end_sector_id - start_sector_id + 1) * block_size;
-
-        let mut buffer = vec![0; buffer_size];
-        block_dev.read_block(start_sector_id as u64, &mut buffer)?;
-        let buf_in_buffer = unsafe {
-            core::slice::from_raw_parts_mut(
-                buffer.as_mut_ptr().byte_add(start_sector_write_start),
-                buf.len(),
-            )
+        let mut temp_block = unsafe {
+            Dma::<[u8]>::zeroed_slice(block_size)
+                .expect("No memory for block device")
+                .cast_slice()
         };
-        buf_in_buffer.copy_from_slice(buf);
-        block_dev.write_block(start_sector_id as u64, &buffer)
+        let mut buf_offset = 0;
+
+        for block_id in start_block_id..=end_block_id {
+            let block_start_byte = block_id * block_size;
+
+            let offset_in_block = if block_id == start_block_id {
+                start - block_start_byte
+            } else {
+                0
+            };
+
+            let end_in_block = if block_id == end_block_id {
+                end - block_start_byte
+            } else {
+                block_size
+            };
+
+            let bytes_to_copy = end_in_block - offset_in_block;
+
+            if offset_in_block != 0 || end_in_block != block_size {
+                block_dev.read_block(block_id as u64, &mut temp_block)?;
+            }
+
+            temp_block[offset_in_block..end_in_block]
+                .copy_from_slice(&buf[buf_offset..buf_offset + bytes_to_copy]);
+
+            block_dev.write_block(block_id as u64, &temp_block)?;
+
+            buf_offset += bytes_to_copy;
+        }
+
+        Ok(())
     }
 
     pub fn block_size(&self) -> u32 {

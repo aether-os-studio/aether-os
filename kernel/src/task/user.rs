@@ -2,7 +2,7 @@ use crate::{
     arch::CurrentRmmArch,
     fs::vfs::file::ArcFile,
     init::memory::{FRAME_ALLOCATOR, KERNEL_PAGE_TABLE_PHYS, PAGE_SIZE, align_down, align_up},
-    memory::mapper::KernelPageMapper,
+    memory::{DummyFrameAllocator, mapper::KernelPageMapper},
     task::{ArcTask, Task, add_task},
 };
 use alloc::{string::String, vec, vec::Vec};
@@ -130,11 +130,7 @@ pub fn create_user_task(
 ) -> Result<ArcTask, &'static str> {
     let user_page_table = create_user_page_table();
 
-    let mut frame_allocator = FRAME_ALLOCATOR.lock();
-    let mut page_mapper =
-        unsafe { KernelPageMapper::new(TableKind::User, user_page_table, &mut *frame_allocator) };
-
-    let elf_result = load_elf(&file, &mut page_mapper, 0)?;
+    let elf_result = load_elf(&file, user_page_table, 0)?;
 
     let (entry_point, interp_base) = if let Some(interp_path) = &elf_result.interp_path {
         let interp_file = {
@@ -144,25 +140,23 @@ pub fn create_user_task(
                 .ok_or("Failed to find interpreter")?
         };
 
-        let interp_result = load_elf(&interp_file, &mut page_mapper, INTERP_LOAD_BASE)?;
+        let interp_result = load_elf(&interp_file, user_page_table, INTERP_LOAD_BASE)?;
         (interp_result.entry_point, INTERP_LOAD_BASE)
     } else {
         (elf_result.entry_point, 0)
     };
 
     let stack_bottom = USER_STACK_TOP - USER_STACK_SIZE;
-    allocate_user_stack(&mut page_mapper, stack_bottom, USER_STACK_SIZE)?;
+    allocate_user_stack(user_page_table, stack_bottom, USER_STACK_SIZE)?;
 
     let stack_pointer = setup_user_stack(
-        &mut page_mapper,
+        user_page_table,
         USER_STACK_TOP,
         &argv,
         &envp,
         &elf_result,
         interp_base,
     )?;
-
-    drop(frame_allocator);
 
     let task = Task::new(name);
 
@@ -178,9 +172,9 @@ pub fn create_user_task(
     Ok(task)
 }
 
-fn load_elf<A: FrameAllocator>(
+fn load_elf(
     file: &ArcFile,
-    page_mapper: &mut KernelPageMapper<CurrentRmmArch, A>,
+    page_table_paddr: PhysicalAddress,
     load_base: usize,
 ) -> Result<ElfLoadResult, &'static str> {
     let mut header_buf = [0u8; size_of::<Elf64Header>()];
@@ -228,7 +222,7 @@ fn load_elf<A: FrameAllocator>(
 
         match ph.p_type {
             PT_LOAD => {
-                load_segment(file, page_mapper, &ph, actual_load_base)?;
+                load_segment(file, page_table_paddr, &ph, actual_load_base)?;
             }
             PT_INTERP => {
                 let mut interp_buf = vec![0u8; ph.p_filesz as usize];
@@ -264,9 +258,9 @@ fn load_elf<A: FrameAllocator>(
     })
 }
 
-fn load_segment<A: FrameAllocator>(
+fn load_segment(
     file: &ArcFile,
-    page_mapper: &mut KernelPageMapper<CurrentRmmArch, A>,
+    page_table_paddr: PhysicalAddress,
     ph: &Elf64ProgramHeader,
     load_base: usize,
 ) -> Result<(), &'static str> {
@@ -287,6 +281,9 @@ fn load_segment<A: FrameAllocator>(
         true,
     );
 
+    let mut frame_allocator = FRAME_ALLOCATOR.lock();
+    let mut page_mapper =
+        unsafe { KernelPageMapper::new(TableKind::User, page_table_paddr, &mut *frame_allocator) };
     for vaddr in (page_start..page_end).step_by(PAGE_SIZE) {
         unsafe {
             page_mapper
@@ -295,6 +292,7 @@ fn load_segment<A: FrameAllocator>(
                 .ignore();
         }
     }
+    drop(frame_allocator);
 
     if ph.p_filesz > 0 {
         let mut buf = vec![0u8; ph.p_filesz as usize];
@@ -305,23 +303,31 @@ fn load_segment<A: FrameAllocator>(
                 .ok_or("Failed to read segment data")?;
         }
 
-        write_to_user_space(page_mapper, vaddr_start, &buf)?;
+        write_to_user_space(page_table_paddr, vaddr_start, &buf)?;
     }
     if ph.p_memsz > ph.p_filesz {
         let buf = vec![0u8; (ph.p_memsz - ph.p_filesz) as usize];
-        write_to_user_space(page_mapper, vaddr_start + ph.p_filesz as usize, &buf)?;
+        write_to_user_space(page_table_paddr, vaddr_start + ph.p_filesz as usize, &buf)?;
     }
 
     Ok(())
 }
 
-fn allocate_user_stack<A: FrameAllocator>(
-    page_mapper: &mut KernelPageMapper<CurrentRmmArch, A>,
+fn allocate_user_stack(
+    page_table_paddr: PhysicalAddress,
     stack_bottom: usize,
     stack_size: usize,
 ) -> Result<(), &'static str> {
     let flags = make_page_flags(true, true, false, true);
 
+    let mut frame_allocator = FRAME_ALLOCATOR.lock();
+    let mut page_mapper = unsafe {
+        KernelPageMapper::<CurrentRmmArch, _>::new(
+            TableKind::User,
+            page_table_paddr,
+            &mut *frame_allocator,
+        )
+    };
     for offset in (0..stack_size).step_by(PAGE_SIZE) {
         let vaddr = stack_bottom + offset;
         unsafe {
@@ -331,12 +337,13 @@ fn allocate_user_stack<A: FrameAllocator>(
                 .ignore();
         }
     }
+    drop(frame_allocator);
 
     Ok(())
 }
 
-fn setup_user_stack<A: FrameAllocator>(
-    page_mapper: &mut KernelPageMapper<CurrentRmmArch, A>,
+fn setup_user_stack(
+    page_table_paddr: PhysicalAddress,
     stack_top: usize,
     argv: &[String],
     envp: &[String],
@@ -348,7 +355,7 @@ fn setup_user_stack<A: FrameAllocator>(
     let random_bytes = get_random_bytes();
     sp -= 16;
     let at_random_addr = sp;
-    write_to_user_space(page_mapper, sp, &random_bytes)?;
+    write_to_user_space(page_table_paddr, sp, &random_bytes)?;
 
     #[cfg(target_arch = "x86_64")]
     let platform = b"x86_64\0";
@@ -361,7 +368,7 @@ fn setup_user_stack<A: FrameAllocator>(
 
     sp -= platform.len();
     let platform_addr = sp;
-    write_to_user_space(page_mapper, sp, platform)?;
+    write_to_user_space(page_table_paddr, sp, platform)?;
 
     let execfn = if !argv.is_empty() {
         argv[0].as_bytes()
@@ -370,15 +377,15 @@ fn setup_user_stack<A: FrameAllocator>(
     };
     sp -= execfn.len() + 1;
     let execfn_addr = sp;
-    write_to_user_space(page_mapper, sp, execfn)?;
-    write_to_user_space(page_mapper, sp + execfn.len(), &[0u8])?;
+    write_to_user_space(page_table_paddr, sp, execfn)?;
+    write_to_user_space(page_table_paddr, sp + execfn.len(), &[0u8])?;
 
     let mut envp_addrs = Vec::with_capacity(envp.len());
     for env in envp.iter().rev() {
         sp -= env.len() + 1;
         envp_addrs.push(sp);
-        write_to_user_space(page_mapper, sp, env.as_bytes())?;
-        write_to_user_space(page_mapper, sp + env.len(), &[0u8])?;
+        write_to_user_space(page_table_paddr, sp, env.as_bytes())?;
+        write_to_user_space(page_table_paddr, sp + env.len(), &[0u8])?;
     }
     envp_addrs.reverse();
 
@@ -386,8 +393,8 @@ fn setup_user_stack<A: FrameAllocator>(
     for arg in argv.iter().rev() {
         sp -= arg.len() + 1;
         argv_addrs.push(sp);
-        write_to_user_space(page_mapper, sp, arg.as_bytes())?;
-        write_to_user_space(page_mapper, sp + arg.len(), &[0u8])?;
+        write_to_user_space(page_table_paddr, sp, arg.as_bytes())?;
+        write_to_user_space(page_table_paddr, sp + arg.len(), &[0u8])?;
     }
     argv_addrs.reverse();
 
@@ -423,42 +430,50 @@ fn setup_user_stack<A: FrameAllocator>(
 
     let stack_pointer = sp;
 
-    write_usize(page_mapper, sp, argc)?;
+    write_usize(page_table_paddr, sp, argc)?;
     sp += size_of::<usize>();
 
     for &addr in &argv_addrs {
-        write_usize(page_mapper, sp, addr)?;
+        write_usize(page_table_paddr, sp, addr)?;
         sp += size_of::<usize>();
     }
-    write_usize(page_mapper, sp, 0)?;
+    write_usize(page_table_paddr, sp, 0)?;
     sp += size_of::<usize>();
 
     for &addr in &envp_addrs {
-        write_usize(page_mapper, sp, addr)?;
+        write_usize(page_table_paddr, sp, addr)?;
         sp += size_of::<usize>();
     }
-    write_usize(page_mapper, sp, 0)?;
+    write_usize(page_table_paddr, sp, 0)?;
     sp += size_of::<usize>();
 
     for (aux_type, aux_val) in auxv {
-        write_usize(page_mapper, sp, aux_type)?;
+        write_usize(page_table_paddr, sp, aux_type)?;
         sp += size_of::<usize>();
-        write_usize(page_mapper, sp, aux_val)?;
+        write_usize(page_table_paddr, sp, aux_val)?;
         sp += size_of::<usize>();
     }
 
     Ok(stack_pointer)
 }
 
-fn write_to_user_space<A: FrameAllocator>(
-    page_mapper: &mut KernelPageMapper<CurrentRmmArch, A>,
+fn write_to_user_space(
+    page_table_paddr: PhysicalAddress,
     vaddr: usize,
     data: &[u8],
 ) -> Result<(), &'static str> {
+    let page_mapper = unsafe {
+        KernelPageMapper::<CurrentRmmArch, DummyFrameAllocator>::new(
+            TableKind::User,
+            page_table_paddr,
+            DummyFrameAllocator,
+        )
+    };
+
     let mut offset = 0;
     while offset < data.len() {
-        let page_vaddr = (vaddr + offset) & !(PAGE_SIZE - 1);
-        let page_offset = (vaddr + offset) % PAGE_SIZE;
+        let page_vaddr = align_down(vaddr + offset);
+        let page_offset = vaddr + offset - page_vaddr;
         let bytes_in_page = core::cmp::min(PAGE_SIZE - page_offset, data.len() - offset);
 
         let (phys, _flags) = page_mapper
@@ -480,11 +495,11 @@ fn write_to_user_space<A: FrameAllocator>(
     Ok(())
 }
 
-fn write_usize<A: FrameAllocator>(
-    page_mapper: &mut KernelPageMapper<CurrentRmmArch, A>,
+fn write_usize(
+    page_table_paddr: PhysicalAddress,
     vaddr: usize,
     value: usize,
 ) -> Result<(), &'static str> {
     let bytes = value.to_ne_bytes();
-    write_to_user_space(page_mapper, vaddr, &bytes)
+    write_to_user_space(page_table_paddr, vaddr, &bytes)
 }

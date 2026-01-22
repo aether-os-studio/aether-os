@@ -70,6 +70,8 @@ impl<T> Dma<[T]> {
         let phys = unsafe { FRAME_ALLOCATOR.lock().allocate(count) }?;
         let virt = unsafe { CurrentRmmArch::phys_to_virt(phys) };
 
+        unsafe { core::ptr::write_bytes(virt.data() as *mut u8, 0, aligned_len) };
+
         Some(Dma {
             phys,
             count,

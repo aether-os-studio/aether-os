@@ -747,13 +747,7 @@ impl UsbMassStorage {
             return Err("Invalid Argument");
         }
 
-        let max_blocks_per_transfer = if start_lba + total_count > MAX_LBA_32 {
-            512u32
-        } else if total_count > MAX_BLOCKS_10 as u64 {
-            256u32
-        } else {
-            128u32
-        };
+        let max_blocks_per_transfer = 128u32;
 
         let mut current_lba = start_lba;
         let mut remaining = total_count;
@@ -917,11 +911,19 @@ impl BlockDeviceTrait for UsbMassStorage {
         block_id: u64,
         buf: &mut [u8],
     ) -> core::result::Result<(), &'static str> {
-        self.read_blocks(block_id, (buf.len() as u32).div_ceil(self.block_size), buf)
+        self.read_blocks_chunked(
+            block_id,
+            (buf.len() as u32).div_ceil(self.block_size) as u64,
+            buf,
+        )
     }
 
     fn write_block(&mut self, block_id: u64, buf: &[u8]) -> core::result::Result<(), &'static str> {
-        self.write_blocks(block_id, (buf.len() as u32).div_ceil(self.block_size), buf)
+        self.write_blocks_chunked(
+            block_id,
+            (buf.len() as u32).div_ceil(self.block_size) as u64,
+            buf,
+        )
     }
 
     fn block_size(&self) -> u32 {
